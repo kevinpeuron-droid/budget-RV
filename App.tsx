@@ -348,6 +348,7 @@ function App() {
               budgetLines={data.budget} 
               transactions={data.realized}
               year={data.budgetYear}
+              archives={data.archives}
               onUpdate={updateBudget}
               onYearChange={updateBudgetYear}
             />

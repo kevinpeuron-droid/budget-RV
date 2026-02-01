@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BankLine, Transaction, BudgetLine } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download } from 'lucide-react';
+import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload } from 'lucide-react';
 
 interface BankTabProps {
   bankLines: BankLine[];
@@ -45,11 +45,9 @@ export const BankTab: React.FC<BankTabProps> = ({
     setNewLine({ date: '', description: '', amount: 0 });
   };
 
-  // Import CSV/Text
-  const handleImport = () => {
-    // Format attendu (Simple): Date;Description;Debit;Credit
-    // OU Date;Description;Amount (si Amount peut être négatif)
-    const lines = importText.split('\n');
+  // Logic to process raw text content
+  const processCSVContent = (content: string) => {
+    const lines = content.split('\n');
     const newLines: BankLine[] = [];
     
     lines.forEach(line => {
@@ -74,7 +72,8 @@ export const BankTab: React.FC<BankTabProps> = ({
              amount = credit - debit;
          } else {
              // Date;Desc;Amount
-             amount = parseFloat(parts[2].replace(',', '.') || '0');
+             const normalizedAmount = parts[2].replace(',', '.').replace(/[^\d.-]/g, '');
+             amount = parseFloat(normalizedAmount || '0');
          }
 
          if(!isNaN(amount)) {
@@ -88,9 +87,33 @@ export const BankTab: React.FC<BankTabProps> = ({
       }
     });
 
-    onUpdateBankLines([...bankLines, ...newLines]);
-    setImportText('');
-    setShowImport(false);
+    if (newLines.length > 0) {
+        onUpdateBankLines([...bankLines, ...newLines]);
+        setImportText('');
+        setShowImport(false);
+    } else {
+        alert("Aucune ligne valide trouvée. Vérifiez le format (Date;Libellé;Montant).");
+    }
+  };
+
+  // Import from Text Area
+  const handleImportText = () => {
+      processCSVContent(importText);
+  };
+
+  // Import from File
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const text = event.target?.result as string;
+          processCSVContent(text);
+      };
+      reader.readAsText(file);
+      // Reset input value to allow re-uploading the same file if needed
+      e.target.value = '';
   };
 
   const deleteLine = (id: string) => {
@@ -159,7 +182,27 @@ export const BankTab: React.FC<BankTabProps> = ({
                     </Button>
                 </div>
             ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-4">
+                     <div className="border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer hover:bg-gray-50 relative">
+                        <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                        <span className="text-sm text-gray-600 block">Cliquez pour importer un fichier CSV</span>
+                        <input 
+                            type="file" 
+                            accept=".csv, .txt" 
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            onChange={handleFileUpload}
+                        />
+                     </div>
+                     
+                     <div className="relative">
+                        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                            <div className="w-full border-t border-gray-300"></div>
+                        </div>
+                        <div className="relative flex justify-center">
+                            <span className="px-2 bg-white text-sm text-gray-500">OU copier-coller</span>
+                        </div>
+                     </div>
+
                     <textarea 
                         className="w-full border p-2 text-xs h-24 font-mono" 
                         placeholder={`01/01/2025;Virement Asso;0;50\n02/01/2025;Achat Stylo;12.50;0`}
@@ -167,7 +210,7 @@ export const BankTab: React.FC<BankTabProps> = ({
                         onChange={e => setImportText(e.target.value)}
                     />
                     <div className="flex gap-2">
-                        <Button onClick={handleImport} size="sm" className="flex-1">Importer</Button>
+                        <Button onClick={handleImportText} size="sm" className="flex-1">Importer Texte</Button>
                         <Button onClick={() => setShowImport(false)} variant="ghost" size="sm">Annuler</Button>
                     </div>
                 </div>
