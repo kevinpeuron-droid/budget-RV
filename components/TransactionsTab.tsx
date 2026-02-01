@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Transaction, AppData, TransactionType, TransactionStatus } from '../types';
+import { Transaction, AppData, TransactionType, TransactionStatus, BudgetLine } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
 import { Trash2, PlusCircle, Edit, X, Clock, CheckCircle } from 'lucide-react';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
-  categoriesRecette: string[];
-  categoriesDepense: string[];
+  budget: BudgetLine[]; // Nous utilisons le budget pour dériver les catégories
   events: AppData['events'];
   isProvisional: boolean;
   onUpdate: (updatedTransactions: Transaction[]) => void;
@@ -15,8 +14,7 @@ interface TransactionsTabProps {
 
 export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   transactions,
-  categoriesRecette,
-  categoriesDepense,
+  budget,
   events,
   isProvisional,
   onUpdate
@@ -26,15 +24,26 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const [formData, setFormData] = useState<Partial<Transaction>>({
     date: new Date().toISOString().split('T')[0],
     description: '',
-    category: '',
+    category: '', // Contiendra la catégorie principale
+    budgetLineId: '', // Contiendra l'ID de la ligne précise (Libellé)
     amount: 0,
     status: 'REALIZED',
     isBenevolat: false,
     hours: 0,
-    hourlyRate: 11.65 // SMIC approx
+    hourlyRate: 11.65 
   });
 
-  const categories = type === 'RECETTE' ? categoriesRecette : categoriesDepense;
+  // Dériver les catégories disponibles depuis le budget
+  const availableCategories = Array.from(new Set(
+    budget
+      .filter(l => l.section === type)
+      .map(l => l.category)
+  ));
+
+  // Dériver les libellés disponibles selon la catégorie choisie
+  const availableBudgetLines = budget.filter(l => 
+    l.section === type && l.category === formData.category
+  );
 
   // Auto-calculate amount for Benevolat
   useEffect(() => {
@@ -46,26 +55,42 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
   }, [formData.hours, formData.hourlyRate, formData.isBenevolat]);
 
-  // Handle category change to toggle Benevolat fields
+  // Handle category change 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const cat = e.target.value;
     const isBen = cat.toLowerCase().includes('bénévolat');
     setFormData(prev => ({
       ...prev,
       category: cat,
+      budgetLineId: '', // Reset sub-selection
       isBenevolat: isBen,
-      amount: isBen ? (prev.hours || 0) * (prev.hourlyRate || 0) : 0,
-      status: 'REALIZED' // Bénévolat is always realized logic usually
+      amount: isBen ? (prev.hours || 0) * (prev.hourlyRate || 0) : prev.amount,
+      status: 'REALIZED'
     }));
+  };
+
+  const handleBudgetLineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const lineId = e.target.value;
+      const line = budget.find(l => l.id === lineId);
+      if (line) {
+          setFormData(prev => ({
+              ...prev,
+              budgetLineId: lineId,
+              description: prev.description || line.label // Pré-remplir description si vide
+          }));
+      }
   };
 
   const startEdit = (t: Transaction) => {
     setType(t.type); // Switch to the correct tab context
     setEditingId(t.id);
+    
+    // Si la transaction n'a pas de budgetLineId (ancienne data), on essaie de la retrouver ou on laisse vide
     setFormData({
       date: t.date,
       description: t.description,
       category: t.category,
+      budgetLineId: t.budgetLineId || '',
       amount: t.amount,
       status: t.status || 'REALIZED',
       eventId: t.eventId,
@@ -83,6 +108,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       date: new Date().toISOString().split('T')[0],
       description: '',
       category: '',
+      budgetLineId: '',
       amount: 0,
       status: 'REALIZED',
       isBenevolat: false,
@@ -101,10 +127,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         if (t.id === editingId) {
           return {
             ...t,
-            type: type, // Ensure type follows current tab if changed
+            type: type,
             date: formData.date!,
             description: formData.description!,
             category: formData.category!,
+            budgetLineId: formData.budgetLineId, // Save the link
             amount: Number(formData.amount),
             status: formData.status || 'REALIZED',
             eventId: formData.eventId,
@@ -125,6 +152,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         date: formData.date!,
         description: formData.description!,
         category: formData.category!,
+        budgetLineId: formData.budgetLineId, // Save the link
         amount: Number(formData.amount),
         status: formData.status || 'REALIZED',
         eventId: formData.eventId,
@@ -210,6 +238,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             </div>
           </div>
 
+          {/* Category Selector (Level 1) */}
           <div>
             <label className="block text-sm font-medium text-gray-700">Catégorie</label>
             <select
@@ -218,10 +247,31 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               onChange={handleCategoryChange}
               required
             >
-              <option value="">Sélectionner...</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="">Sélectionner une catégorie...</option>
+              {availableCategories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+            {availableCategories.length === 0 && (
+                <p className="text-xs text-red-500 mt-1">Aucune catégorie trouvée dans le Bilan Financier.</p>
+            )}
           </div>
+
+          {/* Budget Line Selector (Level 2) - Only if category selected */}
+          {formData.category && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Libellé (Bilan Financier)</label>
+                <select
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.budgetLineId}
+                    onChange={handleBudgetLineChange}
+                    required
+                >
+                    <option value="">Sélectionner un libellé...</option>
+                    {availableBudgetLines.map(line => (
+                        <option key={line.id} value={line.id}>{line.label}</option>
+                    ))}
+                </select>
+              </div>
+          )}
 
           {formData.isBenevolat && (
             <div className="grid grid-cols-2 gap-2 bg-blue-50 p-2 rounded border border-blue-100">
@@ -251,7 +301,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Description</label>
+            <label className="block text-sm font-medium text-gray-700">Description / Détail</label>
             <input
               type="text"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"

@@ -27,6 +27,7 @@ const INITIAL_STATE: AppState = {
   sponsors: [],
   contacts: [],
   budget: DEFAULT_BUDGET_LINES, // Initialize with default budget lines
+  budgetYear: new Date().getFullYear(),
   categoriesRecette: DEFAULT_CATEGORIES_RECETTE,
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
   events: [],
@@ -50,6 +51,9 @@ function App() {
         if (!parsed.contacts) parsed.contacts = [];
         // Ensure budget array exists
         if (!parsed.budget || parsed.budget.length === 0) parsed.budget = DEFAULT_BUDGET_LINES;
+        // Ensure budgetYear exists
+        if (!parsed.budgetYear) parsed.budgetYear = new Date().getFullYear();
+        
         setData(parsed);
       } catch (e) {
         console.error("Failed to load data", e);
@@ -69,6 +73,7 @@ function App() {
   // Provisional transactions list is kept in data but not shown in this specific 'budget' view anymore, but we can keep the helper
   const updateProvisional = (transactions: Transaction[]) => setData(prev => ({ ...prev, provisional: transactions }));
   const updateBudget = (budgetLines: BudgetLine[]) => setData(prev => ({ ...prev, budget: budgetLines }));
+  const updateBudgetYear = (year: number) => setData(prev => ({ ...prev, budgetYear: year }));
   const updateSponsors = (sponsors: Sponsor[]) => setData(prev => ({ ...prev, sponsors }));
   const updateContributions = (contributions: Contribution[]) => setData(prev => ({ ...prev, contributions }));
   const updateContacts = (contacts: Contact[]) => setData(prev => ({ ...prev, contacts }));
@@ -153,6 +158,7 @@ function App() {
       contacts: prev.contacts, // Conservation de l'annuaire
       sponsors: carriedOverSponsors, // Conservation sponsors
       budget: newBudget, // Report du budget N en N-1
+      budgetYear: prev.budgetYear + 1, // Incrémenter l'année
       archives: [...prev.archives, newArchive]
     }));
   };
@@ -185,7 +191,7 @@ function App() {
         <nav className="mt-2 flex flex-col space-y-1 px-2">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={activeTab} set={setActiveTab} />
           <NavBtn id="realized" icon={Wallet} label="Saisie Réalisé" active={activeTab} set={setActiveTab} />
-          <NavBtn id="budget" icon={PiggyBank} label="Budget" active={activeTab} set={setActiveTab} />
+          <NavBtn id="budget" icon={PiggyBank} label="Bilan Financier" active={activeTab} set={setActiveTab} />
           <NavBtn id="contributions" icon={HandHeart} label="Contributions Nature" active={activeTab} set={setActiveTab} />
           <NavBtn id="sponsors" icon={Users} label="Sponsors" active={activeTab} set={setActiveTab} />
           <NavBtn id="directory" icon={ContactIcon} label="Annuaire" active={activeTab} set={setActiveTab} />
@@ -210,7 +216,7 @@ function App() {
           <h2 className="text-2xl font-semibold text-gray-800">
             {activeTab === 'dashboard' && 'Bilan Financier & Synthèse'}
             {activeTab === 'realized' && 'Saisie des Opérations'}
-            {activeTab === 'budget' && 'Budget Prévisionnel & Suivi'}
+            {activeTab === 'budget' && 'Bilan Financier & Suivi'}
             {activeTab === 'contributions' && 'Bénévolat et Dons en nature'}
             {activeTab === 'sponsors' && 'Partenaires & Sponsors'}
             {activeTab === 'directory' && 'Annuaire des Contacts'}
@@ -233,8 +239,7 @@ function App() {
           {activeTab === 'realized' && (
             <TransactionsTab 
               transactions={data.realized} 
-              categoriesRecette={data.categoriesRecette}
-              categoriesDepense={data.categoriesDepense}
+              budget={data.budget}
               events={data.events}
               isProvisional={false}
               onUpdate={updateRealized}
@@ -244,7 +249,10 @@ function App() {
           {activeTab === 'budget' && (
             <BudgetTab 
               budgetLines={data.budget} 
+              transactions={data.realized}
+              year={data.budgetYear}
               onUpdate={updateBudget}
+              onYearChange={updateBudgetYear}
             />
           )}
 

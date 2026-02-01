@@ -6,11 +6,12 @@ export interface Transaction {
   id: string;
   date: string;
   description: string;
-  category: string;
+  category: string; // Gardé pour rétrocompatibilité et affichage rapide
   amount: number;
   type: TransactionType;
-  status: TransactionStatus; // Nouveau champ
-  eventId?: string; // Optional link to an event
+  status: TransactionStatus;
+  eventId?: string;
+  budgetLineId?: string; // Nouveau lien vers une ligne budgétaire spécifique
   // Volunteer specifics
   isBenevolat?: boolean;
   hours?: number;
@@ -27,15 +28,15 @@ export interface Contribution {
 
 export interface Sponsor {
   id: string;
-  name: string; // Nom de l'entreprise / Organisation
-  contact: string; // Prénom Nom
+  name: string;
+  contact: string;
   email: string;
-  phone?: string; // Téléphone
-  amountPromised: number; // Montant 2025 (Objectif/Promesse)
-  amountPaid: number; // Montant Versé (Pour le bilan financier)
-  dateSent?: string; // Date dossier envoyé
-  dateReminder?: string; // Date dernière relance
-  notes?: string; // Annotations / Notes
+  phone?: string;
+  amountPromised: number;
+  amountPaid: number;
+  dateSent?: string;
+  dateReminder?: string;
+  notes?: string;
   lastYearTotal?: number;
   status: 'En attente' | 'Accepté' | 'Refusé';
 }
@@ -46,7 +47,7 @@ export interface Contact {
   organization?: string;
   email?: string;
   phone?: string;
-  role: string; // ex: Fournisseur, Bénévole, Mairie...
+  role: string;
   notes?: string;
 }
 
@@ -78,8 +79,9 @@ export interface AppData {
   provisional: Transaction[];
   contributions: Contribution[];
   sponsors: Sponsor[];
-  contacts: Contact[]; // Nouvel annuaire
-  budget: BudgetLine[]; // Nouveau module budget
+  contacts: Contact[];
+  budget: BudgetLine[];
+  budgetYear: number;
   categoriesRecette: string[];
   categoriesDepense: string[];
   events: AppEvent[];
