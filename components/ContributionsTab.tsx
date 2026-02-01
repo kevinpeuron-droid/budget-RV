@@ -164,12 +164,22 @@ export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contribution
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(c.unitValue)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">{formatCurrency(c.quantity * c.unitValue)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                  <button onClick={() => startEdit(c)} className="text-indigo-600 hover:text-indigo-900 mr-2">
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => deleteItem(c.id)} className="text-red-600 hover:text-red-900">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    <button 
+                      onClick={() => startEdit(c)} 
+                      className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md shadow-sm border border-blue-200 transition-colors"
+                      title="Modifier"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => deleteItem(c.id)} 
+                      className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md shadow-sm border border-red-200 transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -149,8 +149,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
                 </div>
               </div>
               <div className="flex gap-1">
-                 <button onClick={() => startEventEdit(evt)} className="text-indigo-600 p-1"><Edit className="w-4 h-4" /></button>
-                 <button onClick={() => removeEvent(evt.id)} className="text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                 <button 
+                  onClick={() => startEventEdit(evt)} 
+                  className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md shadow-sm border border-blue-200 transition-colors"
+                  title="Modifier"
+                 >
+                   <Edit className="w-4 h-4" />
+                 </button>
+                 <button 
+                  onClick={() => removeEvent(evt.id)} 
+                  className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md shadow-sm border border-red-200 transition-colors"
+                  title="Supprimer"
+                 >
+                   <Trash2 className="w-4 h-4" />
+                 </button>
               </div>
             </li>
           ))}

@@ -106,12 +106,22 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) 
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(sponsor.amountPromised)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 font-medium">{formatCurrency(sponsor.amountPaid)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => openModal(sponsor)} className="text-indigo-600 hover:text-indigo-900 mr-4">
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => deleteSponsor(sponsor.id)} className="text-red-600 hover:text-red-900">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    <button 
+                      onClick={() => openModal(sponsor)} 
+                      className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md shadow-sm border border-blue-200 transition-colors"
+                      title="Modifier"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => deleteSponsor(sponsor.id)} 
+                      className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md shadow-sm border border-red-200 transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

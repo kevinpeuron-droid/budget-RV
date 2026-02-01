@@ -326,12 +326,22 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                       {formatCurrency(t.amount)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => startEdit(t)} className="text-indigo-600 hover:text-indigo-900 mr-2">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => deleteTransaction(t.id)} className="text-red-600 hover:text-red-900">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          onClick={() => startEdit(t)} 
+                          className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md shadow-sm border border-blue-200 transition-colors"
+                          title="Modifier"
+                        >
+                          <Edit className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => deleteTransaction(t.id)} 
+                          className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md shadow-sm border border-red-200 transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
