@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine,
+  AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine, BankLine,
   DEFAULT_CATEGORIES_RECETTE, DEFAULT_CATEGORIES_DEPENSE, DEFAULT_BUDGET_LINES 
 } from './types';
 import { DashboardTab } from './components/DashboardTab';
@@ -11,11 +11,13 @@ import { ContributionsTab } from './components/ContributionsTab';
 import { ConfigTab } from './components/ConfigTab';
 import { ArchivesTab } from './components/ArchivesTab';
 import { DirectoryTab } from './components/DirectoryTab';
+import { BankTab } from './components/BankTab';
 import { Button } from './components/ui/Button';
 import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
-  Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon
+  Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
+  Landmark
 } from 'lucide-react';
 
 const STORAGE_KEY = 'gestion_asso_data';
@@ -31,10 +33,11 @@ const INITIAL_STATE: AppState = {
   categoriesRecette: DEFAULT_CATEGORIES_RECETTE,
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
   events: [],
-  archives: []
+  archives: [],
+  bankLines: [] // New bank lines state
 };
 
-type TabId = 'dashboard' | 'realized' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
+type TabId = 'dashboard' | 'realized' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives' | 'bank';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -53,6 +56,8 @@ function App() {
         if (!parsed.budget || parsed.budget.length === 0) parsed.budget = DEFAULT_BUDGET_LINES;
         // Ensure budgetYear exists
         if (!parsed.budgetYear) parsed.budgetYear = new Date().getFullYear();
+        // Ensure bankLines exists
+        if (!parsed.bankLines) parsed.bankLines = [];
         
         setData(parsed);
       } catch (e) {
@@ -81,6 +86,86 @@ function App() {
   const updateCategories = (type: 'RECETTE' | 'DEPENSE', cats: string[]) => {
     if (type === 'RECETTE') setData(prev => ({ ...prev, categoriesRecette: cats }));
     else setData(prev => ({ ...prev, categoriesDepense: cats }));
+  };
+  const updateBankLines = (lines: BankLine[]) => setData(prev => ({ ...prev, bankLines: lines }));
+
+  // NEW: Link a bank line to a transaction
+  const handleLinkTransaction = (bankId: string, transactionId: string) => {
+    setData(prev => {
+      // 1. Update the Bank Line
+      const updatedBankLines = prev.bankLines.map(line => 
+        line.id === bankId ? { ...line, transactionId } : line
+      );
+
+      // 2. Update the Transaction
+      // - Change status to REALIZED
+      // - Ideally set date to bank date (optional, but good for accuracy)
+      const bankLine = prev.bankLines.find(l => l.id === bankId);
+      const updatedTransactions = prev.realized.map(t => 
+        t.id === transactionId 
+        ? { ...t, status: 'REALIZED' as const, date: bankLine ? bankLine.date : t.date } 
+        : t
+      );
+
+      return {
+        ...prev,
+        bankLines: updatedBankLines,
+        realized: updatedTransactions
+      };
+    });
+  };
+
+  // NEW: Unlink a bank line
+  const handleUnlinkTransaction = (bankId: string) => {
+    setData(prev => {
+      const bankLine = prev.bankLines.find(l => l.id === bankId);
+      if (!bankLine || !bankLine.transactionId) return prev;
+
+      const transactionId = bankLine.transactionId;
+
+      // 1. Remove link from Bank Line
+      const updatedBankLines = prev.bankLines.map(line => 
+        line.id === bankId ? { ...line, transactionId: undefined } : line
+      );
+
+      // 2. Revert transaction to PENDING (Assume if we unlink, we go back to unknown state)
+      // Note: User can manually set it back to realized if needed.
+      const updatedTransactions = prev.realized.map(t => 
+        t.id === transactionId ? { ...t, status: 'PENDING' as const } : t
+      );
+
+      return {
+        ...prev,
+        bankLines: updatedBankLines,
+        realized: updatedTransactions
+      };
+    });
+  };
+
+  // NEW: Create transaction from bank line
+  const handleCreateFromBank = (bankLineId: string, category: string, budgetLineId: string, description?: string) => {
+      const bankLine = data.bankLines.find(l => l.id === bankLineId);
+      if(!bankLine) return;
+
+      const newTransaction: Transaction = {
+          id: generateId(),
+          date: bankLine.date,
+          description: description || bankLine.description,
+          amount: Math.abs(bankLine.amount),
+          type: bankLine.amount >= 0 ? 'RECETTE' : 'DEPENSE',
+          status: 'REALIZED',
+          category: category,
+          budgetLineId: budgetLineId,
+          isBenevolat: false
+      };
+
+      setData(prev => {
+          return {
+              ...prev,
+              realized: [...prev.realized, newTransaction],
+              bankLines: prev.bankLines.map(l => l.id === bankLineId ? { ...l, transactionId: newTransaction.id } : l)
+          };
+      });
   };
 
   // 9. Exports
@@ -142,8 +227,6 @@ function App() {
     }));
 
     // Reset current operational data but keep configs, archives, contacts AND sponsors (with reset values)
-    // For budget, we might want to copy N to N-1 ? Let's keep it simple and reset or keep as is.
-    // Usually in a new year, N becomes N-1.
     const newBudget = data.budget.map(l => ({
       ...l,
       amountNMinus1: l.amountN,
@@ -190,7 +273,8 @@ function App() {
         </div>
         <nav className="mt-2 flex flex-col space-y-1 px-2">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={activeTab} set={setActiveTab} />
-          <NavBtn id="realized" icon={Wallet} label="Saisie Réalisé" active={activeTab} set={setActiveTab} />
+          <NavBtn id="realized" icon={Wallet} label="Saisie Opérations" active={activeTab} set={setActiveTab} />
+          <NavBtn id="bank" icon={Landmark} label="Banque / Rapprochement" active={activeTab} set={setActiveTab} />
           <NavBtn id="budget" icon={PiggyBank} label="Bilan Financier" active={activeTab} set={setActiveTab} />
           <NavBtn id="contributions" icon={HandHeart} label="Contributions Nature" active={activeTab} set={setActiveTab} />
           <NavBtn id="sponsors" icon={Users} label="Sponsors" active={activeTab} set={setActiveTab} />
@@ -216,6 +300,7 @@ function App() {
           <h2 className="text-2xl font-semibold text-gray-800">
             {activeTab === 'dashboard' && 'Bilan Financier & Synthèse'}
             {activeTab === 'realized' && 'Saisie des Opérations'}
+            {activeTab === 'bank' && 'Relevé Bancaire & Rapprochement'}
             {activeTab === 'budget' && 'Bilan Financier & Suivi'}
             {activeTab === 'contributions' && 'Bénévolat et Dons en nature'}
             {activeTab === 'sponsors' && 'Partenaires & Sponsors'}
@@ -243,6 +328,18 @@ function App() {
               events={data.events}
               isProvisional={false}
               onUpdate={updateRealized}
+            />
+          )}
+
+          {activeTab === 'bank' && (
+            <BankTab
+              bankLines={data.bankLines || []}
+              transactions={data.realized}
+              budget={data.budget}
+              onUpdateBankLines={updateBankLines}
+              onLinkTransaction={handleLinkTransaction}
+              onUnlinkTransaction={handleUnlinkTransaction}
+              onCreateFromBank={handleCreateFromBank}
             />
           )}
 

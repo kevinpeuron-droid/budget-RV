@@ -1,4 +1,5 @@
 
+
 export type TransactionType = 'RECETTE' | 'DEPENSE';
 export type TransactionStatus = 'REALIZED' | 'PENDING'; // REALIZED = Payé/Encaissé, PENDING = Engagé/Sur devis
 
@@ -16,6 +17,14 @@ export interface Transaction {
   isBenevolat?: boolean;
   hours?: number;
   hourlyRate?: number;
+}
+
+export interface BankLine {
+  id: string;
+  date: string;
+  description: string;
+  amount: number; // Positif pour Crédit, Négatif pour Débit
+  transactionId?: string; // ID de l'opération liée dans l'app
 }
 
 export interface Contribution {
@@ -85,6 +94,7 @@ export interface AppData {
   categoriesRecette: string[];
   categoriesDepense: string[];
   events: AppEvent[];
+  bankLines: BankLine[]; // Nouveau champ pour le relevé bancaire
 }
 
 export interface AppState extends AppData {
