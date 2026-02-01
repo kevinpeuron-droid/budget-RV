@@ -1,0 +1,276 @@
+import React, { useState, useEffect } from 'react';
+import { Transaction, AppData, TransactionType } from '../types';
+import { generateId, formatCurrency } from '../utils';
+import { Button } from './ui/Button';
+import { Trash2, PlusCircle, AlertCircle } from 'lucide-react';
+
+interface TransactionsTabProps {
+  transactions: Transaction[];
+  categoriesRecette: string[];
+  categoriesDepense: string[];
+  events: AppData['events'];
+  isProvisional: boolean;
+  onUpdate: (updatedTransactions: Transaction[]) => void;
+}
+
+export const TransactionsTab: React.FC<TransactionsTabProps> = ({
+  transactions,
+  categoriesRecette,
+  categoriesDepense,
+  events,
+  isProvisional,
+  onUpdate
+}) => {
+  const [type, setType] = useState<TransactionType>('RECETTE');
+  const [formData, setFormData] = useState<Partial<Transaction>>({
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+    category: '',
+    amount: 0,
+    isBenevolat: false,
+    hours: 0,
+    hourlyRate: 11.65 // SMIC approx
+  });
+
+  const categories = type === 'RECETTE' ? categoriesRecette : categoriesDepense;
+
+  // Auto-calculate amount for Benevolat
+  useEffect(() => {
+    if (formData.isBenevolat && formData.hours && formData.hourlyRate) {
+      setFormData(prev => ({
+        ...prev,
+        amount: (prev.hours || 0) * (prev.hourlyRate || 0)
+      }));
+    }
+  }, [formData.hours, formData.hourlyRate, formData.isBenevolat]);
+
+  // Handle category change to toggle Benevolat fields
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const cat = e.target.value;
+    const isBen = cat.toLowerCase().includes('bénévolat');
+    setFormData(prev => ({
+      ...prev,
+      category: cat,
+      isBenevolat: isBen,
+      amount: isBen ? (prev.hours || 0) * (prev.hourlyRate || 0) : 0
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.description || !formData.category) return;
+
+    const newTransaction: Transaction = {
+      id: generateId(),
+      type: type,
+      date: formData.date!,
+      description: formData.description!,
+      category: formData.category!,
+      amount: Number(formData.amount),
+      eventId: formData.eventId,
+      isBenevolat: formData.isBenevolat,
+      hours: formData.hours ? Number(formData.hours) : undefined,
+      hourlyRate: formData.hourlyRate ? Number(formData.hourlyRate) : undefined,
+    };
+
+    onUpdate([...transactions, newTransaction]);
+    // Reset form partially
+    setFormData({
+      ...formData,
+      description: '',
+      amount: 0,
+      hours: 0,
+    });
+  };
+
+  const deleteTransaction = (id: string) => {
+    if(window.confirm('Supprimer cette ligne ?')) {
+      onUpdate(transactions.filter(t => t.id !== id));
+    }
+  };
+
+  const filteredTransactions = transactions.filter(t => t.type === type);
+  const total = filteredTransactions.reduce((acc, t) => acc + t.amount, 0);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Input Form */}
+      <div className="bg-white p-6 rounded-lg shadow lg:col-span-1 h-fit sticky top-6">
+        <div className="flex space-x-2 mb-6">
+          <Button 
+            className="flex-1"
+            variant={type === 'RECETTE' ? 'primary' : 'secondary'}
+            onClick={() => setType('RECETTE')}
+          >
+            Recettes
+          </Button>
+          <Button 
+            className="flex-1"
+            variant={type === 'DEPENSE' ? 'danger' : 'secondary'}
+            onClick={() => setType('DEPENSE')}
+          >
+            Dépenses
+          </Button>
+        </div>
+
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <PlusCircle className="w-5 h-5" />
+          {isProvisional ? 'Ajouter Prévision' : 'Ajouter Opération'}
+        </h3>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Date</label>
+            <input
+              type="date"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+              value={formData.date}
+              onChange={e => setFormData({ ...formData, date: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Catégorie</label>
+            <select
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+              value={formData.category}
+              onChange={handleCategoryChange}
+              required
+            >
+              <option value="">Sélectionner...</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          {formData.isBenevolat && (
+            <div className="grid grid-cols-2 gap-2 bg-blue-50 p-2 rounded border border-blue-100">
+              <div>
+                <label className="block text-xs font-medium text-blue-700">Heures</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-1"
+                  value={formData.hours}
+                  onChange={e => setFormData({ ...formData, hours: parseFloat(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-blue-700">Taux Horaire</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-1"
+                  value={formData.hourlyRate}
+                  onChange={e => setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) })}
+                />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Description</label>
+            <input
+              type="text"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+              value={formData.description}
+              onChange={e => setFormData({ ...formData, description: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Événement (Optionnel)</label>
+            <select
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+              value={formData.eventId || ''}
+              onChange={e => setFormData({ ...formData, eventId: e.target.value })}
+            >
+              <option value="">Aucun</option>
+              {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Montant (€)</label>
+            <input
+              type="number"
+              step="0.01"
+              className={`mt-1 block w-full rounded-md shadow-sm border p-2 ${formData.isBenevolat ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'}`}
+              value={formData.amount}
+              onChange={e => !formData.isBenevolat && setFormData({ ...formData, amount: parseFloat(e.target.value) })}
+              readOnly={formData.isBenevolat}
+              required
+            />
+          </div>
+
+          <Button type="submit" className="w-full">
+            Ajouter {type === 'RECETTE' ? 'Recette' : 'Dépense'}
+          </Button>
+        </form>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-lg shadow lg:col-span-2 overflow-hidden flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+          <h3 className="font-bold text-gray-700">Liste des {type === 'RECETTE' ? 'Recettes' : 'Dépenses'} ({filteredTransactions.length})</h3>
+          <span className={`text-xl font-bold ${type === 'RECETTE' ? 'text-green-600' : 'text-red-600'}`}>
+            Total: {formatCurrency(total)}
+          </span>
+        </div>
+        <div className="overflow-x-auto flex-1">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredTransactions.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                    Aucune transaction enregistrée
+                  </td>
+                </tr>
+              )}
+              {filteredTransactions.map(t => {
+                const evt = events.find(e => e.id === t.eventId);
+                return (
+                  <tr key={t.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                        {t.category}
+                      </span>
+                      {t.isBenevolat && <span className="ml-2 text-xs text-gray-400">({t.hours}h)</span>}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {t.description}
+                      {evt && (
+                         <span className="ml-2 inline-block w-3 h-3 rounded-full" style={{ backgroundColor: evt.color }} title={evt.name}></span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                      {formatCurrency(t.amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button onClick={() => deleteTransaction(t.id)} className="text-red-600 hover:text-red-900">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
