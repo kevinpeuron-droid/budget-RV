@@ -1,19 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, 
-  DEFAULT_CATEGORIES_RECETTE, DEFAULT_CATEGORIES_DEPENSE 
+  AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine,
+  DEFAULT_CATEGORIES_RECETTE, DEFAULT_CATEGORIES_DEPENSE, DEFAULT_BUDGET_LINES 
 } from './types';
 import { DashboardTab } from './components/DashboardTab';
 import { TransactionsTab } from './components/TransactionsTab';
+import { BudgetTab } from './components/BudgetTab';
 import { SponsorsTab } from './components/SponsorsTab';
 import { ContributionsTab } from './components/ContributionsTab';
 import { ConfigTab } from './components/ConfigTab';
 import { ArchivesTab } from './components/ArchivesTab';
+import { DirectoryTab } from './components/DirectoryTab';
 import { Button } from './components/ui/Button';
 import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
-  Archive as ArchiveIcon, Download, Upload, Printer 
+  Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon
 } from 'lucide-react';
 
 const STORAGE_KEY = 'gestion_asso_data';
@@ -23,13 +25,15 @@ const INITIAL_STATE: AppState = {
   provisional: [],
   contributions: [],
   sponsors: [],
+  contacts: [],
+  budget: DEFAULT_BUDGET_LINES, // Initialize with default budget lines
   categoriesRecette: DEFAULT_CATEGORIES_RECETTE,
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
   events: [],
   archives: []
 };
 
-type TabId = 'dashboard' | 'realized' | 'provisional' | 'contributions' | 'sponsors' | 'config' | 'archives';
+type TabId = 'dashboard' | 'realized' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -41,7 +45,12 @@ function App() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setData(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        // Ensure contacts array exists for older save versions
+        if (!parsed.contacts) parsed.contacts = [];
+        // Ensure budget array exists
+        if (!parsed.budget || parsed.budget.length === 0) parsed.budget = DEFAULT_BUDGET_LINES;
+        setData(parsed);
       } catch (e) {
         console.error("Failed to load data", e);
       }
@@ -57,9 +66,12 @@ function App() {
 
   // Data helpers
   const updateRealized = (transactions: Transaction[]) => setData(prev => ({ ...prev, realized: transactions }));
+  // Provisional transactions list is kept in data but not shown in this specific 'budget' view anymore, but we can keep the helper
   const updateProvisional = (transactions: Transaction[]) => setData(prev => ({ ...prev, provisional: transactions }));
+  const updateBudget = (budgetLines: BudgetLine[]) => setData(prev => ({ ...prev, budget: budgetLines }));
   const updateSponsors = (sponsors: Sponsor[]) => setData(prev => ({ ...prev, sponsors }));
   const updateContributions = (contributions: Contribution[]) => setData(prev => ({ ...prev, contributions }));
+  const updateContacts = (contacts: Contact[]) => setData(prev => ({ ...prev, contacts }));
   const updateEvents = (events: AppEvent[]) => setData(prev => ({ ...prev, events }));
   const updateCategories = (type: 'RECETTE' | 'DEPENSE', cats: string[]) => {
     if (type === 'RECETTE') setData(prev => ({ ...prev, categoriesRecette: cats }));
@@ -98,7 +110,7 @@ function App() {
 
   const handleExportCSV = () => {
     // Determine what to export based on tab, or export all realized by default
-    const headers = ['date', 'type', 'category', 'description', 'amount'];
+    const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
     downloadCSV(csvContent, 'transactions_realisees.csv');
   };
@@ -123,14 +135,24 @@ function App() {
       amountPromised: 0,           // On remet la promesse à zéro
       status: 'Prospect' as const  // On remet le statut à 'Prospect' pour relancer le démarchage
     }));
+
+    // Reset current operational data but keep configs, archives, contacts AND sponsors (with reset values)
+    // For budget, we might want to copy N to N-1 ? Let's keep it simple and reset or keep as is.
+    // Usually in a new year, N becomes N-1.
+    const newBudget = data.budget.map(l => ({
+      ...l,
+      amountNMinus1: l.amountN,
+      amountN: 0
+    }));
     
-    // Reset current operational data but keep configs, archives AND sponsors (with reset values)
     setData(prev => ({
       ...INITIAL_STATE,
       categoriesRecette: prev.categoriesRecette,
       categoriesDepense: prev.categoriesDepense,
       events: prev.events,
-      sponsors: carriedOverSponsors,
+      contacts: prev.contacts, // Conservation de l'annuaire
+      sponsors: carriedOverSponsors, // Conservation sponsors
+      budget: newBudget, // Report du budget N en N-1
       archives: [...prev.archives, newArchive]
     }));
   };
@@ -138,7 +160,7 @@ function App() {
   const loadArchive = (archive: Archive) => {
     setData({
       ...archive.data,
-      archives: data.archives // Keep archives list intact
+      archives: data.archives // Keep archives list intact so we can switch back
     });
   };
 
@@ -163,9 +185,10 @@ function App() {
         <nav className="mt-2 flex flex-col space-y-1 px-2">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={activeTab} set={setActiveTab} />
           <NavBtn id="realized" icon={Wallet} label="Saisie Réalisé" active={activeTab} set={setActiveTab} />
-          <NavBtn id="provisional" icon={PiggyBank} label="Budget Prévisionnel" active={activeTab} set={setActiveTab} />
+          <NavBtn id="budget" icon={PiggyBank} label="Budget" active={activeTab} set={setActiveTab} />
           <NavBtn id="contributions" icon={HandHeart} label="Contributions Nature" active={activeTab} set={setActiveTab} />
           <NavBtn id="sponsors" icon={Users} label="Sponsors" active={activeTab} set={setActiveTab} />
+          <NavBtn id="directory" icon={ContactIcon} label="Annuaire" active={activeTab} set={setActiveTab} />
           <NavBtn id="config" icon={Settings} label="Configuration" active={activeTab} set={setActiveTab} />
           <NavBtn id="archives" icon={ArchiveIcon} label="Archives" active={activeTab} set={setActiveTab} />
         </nav>
@@ -182,16 +205,17 @@ function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 bg-gray-50 overflow-y-auto h-screen">
+      <main className="flex-1 bg-gray-50 overflow-y-auto h-screen print:h-auto print:overflow-visible">
         <header className="bg-white shadow px-6 py-4 flex justify-between items-center no-print sticky top-0 z-10">
           <h2 className="text-2xl font-semibold text-gray-800">
-            {activeTab === 'dashboard' && 'Bilan Financier'}
+            {activeTab === 'dashboard' && 'Bilan Financier & Synthèse'}
             {activeTab === 'realized' && 'Saisie des Opérations'}
-            {activeTab === 'provisional' && 'Budget Prévisionnel'}
+            {activeTab === 'budget' && 'Budget Prévisionnel & Suivi'}
             {activeTab === 'contributions' && 'Bénévolat et Dons en nature'}
             {activeTab === 'sponsors' && 'Partenaires & Sponsors'}
+            {activeTab === 'directory' && 'Annuaire des Contacts'}
             {activeTab === 'config' && 'Paramètres'}
-            {activeTab === 'archives' && 'Historique'}
+            {activeTab === 'archives' && 'Historique des Bilans'}
           </h2>
           <div className="flex space-x-2">
             <Button variant="secondary" onClick={() => window.print()}>
@@ -203,7 +227,7 @@ function App() {
           </div>
         </header>
 
-        <div className="p-6 print-p-0">
+        <div className="p-6 print:p-0">
           {activeTab === 'dashboard' && <DashboardTab data={data} />}
           
           {activeTab === 'realized' && (
@@ -217,14 +241,10 @@ function App() {
             />
           )}
 
-          {activeTab === 'provisional' && (
-            <TransactionsTab 
-              transactions={data.provisional} 
-              categoriesRecette={data.categoriesRecette}
-              categoriesDepense={data.categoriesDepense}
-              events={data.events}
-              isProvisional={true}
-              onUpdate={updateProvisional}
+          {activeTab === 'budget' && (
+            <BudgetTab 
+              budgetLines={data.budget} 
+              onUpdate={updateBudget}
             />
           )}
 
@@ -234,6 +254,10 @@ function App() {
 
           {activeTab === 'sponsors' && (
              <SponsorsTab sponsors={data.sponsors} onUpdate={updateSponsors} />
+          )}
+
+          {activeTab === 'directory' && (
+             <DirectoryTab contacts={data.contacts || []} onUpdate={updateContacts} />
           )}
 
           {activeTab === 'config' && (

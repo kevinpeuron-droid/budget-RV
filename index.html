@@ -7,11 +7,61 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @media print {
+        /* Masquer les éléments non imprimables */
         .no-print { display: none !important; }
+        
+        /* Afficher les éléments spécifiques à l'impression */
         .print-only { display: block !important; }
-        body { background: white; color: black; }
-        .page-break { page-break-before: always; }
+        
+        /* Réinitialisation globale pour l'impression multipage */
+        html, body {
+          height: auto !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: white !important;
+          color: black !important;
+        }
+
+        /* Forcer le conteneur racine et main à s'étendre */
+        #root, main {
+          height: auto !important;
+          overflow: visible !important;
+          display: block !important;
+          width: 100% !important;
+          position: relative !important;
+        }
+
+        /* Forcer l'impression des couleurs d'arrière-plan et graphiques */
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        /* Gestion des sauts de page */
+        .page-break { 
+          page-break-before: always !important; 
+          break-before: page !important;
+          display: block;
+          height: 1px;
+        }
+        
+        /* Éviter de couper les tableaux ou blocs en deux */
+        .break-inside-avoid { 
+          break-inside: avoid !important; 
+          page-break-inside: avoid !important;
+        }
+        
+        /* Nettoyage visuel */
+        .shadow-sm, .shadow, .shadow-lg { 
+          box-shadow: none !important; 
+          border: 1px solid #ddd !important; /* Bordure légère pour lisibilité */
+        }
+        
+        /* Largeur pleine pour les tableaux */
+        table { width: 100% !important; }
       }
+      
       .print-only { display: none; }
     </style>
   <script type="importmap">

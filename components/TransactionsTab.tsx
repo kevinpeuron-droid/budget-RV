@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Transaction, AppData, TransactionType } from '../types';
+import { Transaction, AppData, TransactionType, TransactionStatus } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, PlusCircle, AlertCircle, Edit, X } from 'lucide-react';
+import { Trash2, PlusCircle, Edit, X, Clock, CheckCircle } from 'lucide-react';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
@@ -28,6 +28,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     description: '',
     category: '',
     amount: 0,
+    status: 'REALIZED',
     isBenevolat: false,
     hours: 0,
     hourlyRate: 11.65 // SMIC approx
@@ -53,7 +54,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       ...prev,
       category: cat,
       isBenevolat: isBen,
-      amount: isBen ? (prev.hours || 0) * (prev.hourlyRate || 0) : 0
+      amount: isBen ? (prev.hours || 0) * (prev.hourlyRate || 0) : 0,
+      status: 'REALIZED' // Bénévolat is always realized logic usually
     }));
   };
 
@@ -65,6 +67,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       description: t.description,
       category: t.category,
       amount: t.amount,
+      status: t.status || 'REALIZED',
       eventId: t.eventId,
       isBenevolat: t.isBenevolat,
       hours: t.hours,
@@ -81,6 +84,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       description: '',
       category: '',
       amount: 0,
+      status: 'REALIZED',
       isBenevolat: false,
       hours: 0,
       hourlyRate: 11.65
@@ -97,11 +101,12 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         if (t.id === editingId) {
           return {
             ...t,
-            type: type, // Ensure type follows current tab if changed (though usually we stick to logic)
+            type: type, // Ensure type follows current tab if changed
             date: formData.date!,
             description: formData.description!,
             category: formData.category!,
             amount: Number(formData.amount),
+            status: formData.status || 'REALIZED',
             eventId: formData.eventId,
             isBenevolat: formData.isBenevolat,
             hours: formData.hours ? Number(formData.hours) : undefined,
@@ -121,6 +126,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         description: formData.description!,
         category: formData.category!,
         amount: Number(formData.amount),
+        status: formData.status || 'REALIZED',
         eventId: formData.eventId,
         isBenevolat: formData.isBenevolat,
         hours: formData.hours ? Number(formData.hours) : undefined,
@@ -134,6 +140,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         description: '',
         amount: 0,
         hours: 0,
+        status: 'REALIZED'
       });
     }
   };
@@ -178,15 +185,29 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Date</label>
-            <input
-              type="date"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-              value={formData.date}
-              onChange={e => setFormData({ ...formData, date: e.target.value })}
-              required
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+                <label className="block text-sm font-medium text-gray-700">Date</label>
+                <input
+                type="date"
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                value={formData.date}
+                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                required
+                />
+            </div>
+             <div>
+                <label className="block text-sm font-medium text-gray-700">Statut</label>
+                <select
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                    value={formData.status}
+                    onChange={e => setFormData({ ...formData, status: e.target.value as TransactionStatus })}
+                    disabled={formData.isBenevolat}
+                >
+                    <option value="REALIZED">✅ Réalisé / Payé</option>
+                    <option value="PENDING">⏳ À venir / Engagé</option>
+                </select>
+            </div>
           </div>
 
           <div>
@@ -291,6 +312,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
@@ -300,16 +322,28 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
                     Aucune transaction enregistrée
                   </td>
                 </tr>
               )}
               {filteredTransactions.map(t => {
                 const evt = events.find(e => e.id === t.eventId);
+                const isPending = t.status === 'PENDING';
                 return (
                   <tr key={t.id} className={`hover:bg-gray-50 ${editingId === t.id ? 'bg-blue-50' : ''}`}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {isPending ? (
+                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                                <Clock className="w-3 h-3 mr-1" /> À venir
+                             </span>
+                        ) : (
+                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                <CheckCircle className="w-3 h-3 mr-1" /> Payé
+                             </span>
+                        )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                         {t.category}

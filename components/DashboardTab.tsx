@@ -12,75 +12,136 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
   
   const stats = useMemo(() => {
-    // 1. Calcul des recettes provenant de la saisie manuelle (Transactions)
-    const recettesManuelles = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => acc + curr.amount, 0);
+    // 1. Calcul des recettes MANUELLES (Saisie Opérations)
+    // Séparation Réalisé (Payé) vs À Venir (Engagé)
+    const recettesRealized = data.realized
+      .filter(t => t.type === 'RECETTE' && (t.status === undefined || t.status === 'REALIZED'))
+      .reduce((acc, curr) => acc + curr.amount, 0);
+      
+    const recettesPending = data.realized
+      .filter(t => t.type === 'RECETTE' && t.status === 'PENDING')
+      .reduce((acc, curr) => acc + curr.amount, 0);
     
-    // 2. Calcul des recettes provenant du module Sponsors (uniquement le montant 'Versé')
-    const recettesSponsors = data.sponsors.reduce((acc, curr) => acc + (curr.amountPaid || 0), 0);
+    // 2. Sponsors
+    // 'Versé' va dans le réalisé, (Promis - Versé) va dans le pending s'il reste à payer
+    const recettesSponsorsRealized = data.sponsors.reduce((acc, curr) => acc + (curr.amountPaid || 0), 0);
+    const recettesSponsorsPending = data.sponsors.reduce((acc, curr) => acc + Math.max(0, (curr.amountPromised || 0) - (curr.amountPaid || 0)), 0);
 
-    // Total combiné
-    const totalRecettes = recettesManuelles + recettesSponsors;
+    // TOTAUX RECETTES
+    const totalRecettesRealized = recettesRealized + recettesSponsorsRealized;
+    const totalRecettesPending = recettesPending + recettesSponsorsPending;
+    const totalRecettesGlobal = totalRecettesRealized + totalRecettesPending;
 
-    // Total Dépenses
-    const totalDepenses = data.realized.filter(t => t.type === 'DEPENSE').reduce((acc, curr) => acc + curr.amount, 0);
+    // 3. Dépenses
+    const depensesRealized = data.realized
+      .filter(t => t.type === 'DEPENSE' && (t.status === undefined || t.status === 'REALIZED'))
+      .reduce((acc, curr) => acc + curr.amount, 0);
+
+    const depensesPending = data.realized
+      .filter(t => t.type === 'DEPENSE' && t.status === 'PENDING')
+      .reduce((acc, curr) => acc + curr.amount, 0);
+
+    // TOTAUX DEPENSES
+    const totalDepensesRealized = depensesRealized;
+    const totalDepensesPending = depensesPending;
+    const totalDepensesGlobal = totalDepensesRealized + totalDepensesPending;
     
-    // Résultat
-    const solde = totalRecettes - totalDepenses;
+    // RÉSULTATS
+    const soldeReel = totalRecettesRealized - totalDepensesRealized;
+    const soldeProjete = totalRecettesGlobal - totalDepensesGlobal;
     
-    // Préparation des données pour le Pie Chart (Recettes)
+    // Préparation Pie Chart (Basé sur le réalisé + engagé pour avoir une vue d'ensemble)
     const recettesByCategory = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
 
-    // AJOUT : On injecte les sponsors comme une catégorie de recette dans le graphique
-    if (recettesSponsors > 0) {
+    if (recettesSponsorsRealized + recettesSponsorsPending > 0) {
       const labelSponsor = "Partenaires & Sponsors";
-      // Si une catégorie existe déjà avec ce nom, on additionne, sinon on crée
-      recettesByCategory[labelSponsor] = (recettesByCategory[labelSponsor] || 0) + recettesSponsors;
+      recettesByCategory[labelSponsor] = (recettesByCategory[labelSponsor] || 0) + (recettesSponsorsRealized + recettesSponsorsPending);
     }
 
-    // Préparation des données pour le Pie Chart (Dépenses)
     const depensesByCategory = data.realized.filter(t => t.type === 'DEPENSE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
 
-    return { totalRecettes, totalDepenses, solde, recettesByCategory, depensesByCategory, recettesSponsors };
-  }, [data.realized, data.sponsors]); // On recalcule si les transactions OU les sponsors changent
+    return { 
+        totalRecettesRealized, totalRecettesPending, totalRecettesGlobal,
+        totalDepensesRealized, totalDepensesPending, totalDepensesGlobal,
+        soldeReel, soldeProjete,
+        recettesByCategory, depensesByCategory, 
+        recettesSponsorsRealized 
+    };
+  }, [data.realized, data.sponsors]);
 
   const pieDataRecettes = Object.keys(stats.recettesByCategory).map(key => ({ name: key, value: stats.recettesByCategory[key] }));
   const pieDataDepenses = Object.keys(stats.depensesByCategory).map(key => ({ name: key, value: stats.depensesByCategory[key] }));
 
   const barData = [
-    { name: 'Global', Recettes: stats.totalRecettes, Dépenses: stats.totalDepenses }
+    { name: 'Réalisé (Caisse)', Recettes: stats.totalRecettesRealized, Dépenses: stats.totalDepensesRealized },
+    { name: 'À venir (Engagé)', Recettes: stats.totalRecettesPending, Dépenses: stats.totalDepensesPending },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-          <h3 className="text-gray-500 text-sm font-medium">Total Recettes</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRecettes)}</p>
-          {stats.recettesSponsors > 0 && (
-            <p className="text-xs text-gray-500 mt-1">Dont {formatCurrency(stats.recettesSponsors)} de sponsors</p>
-          )}
+      {/* Synthèse des montants / Trésorerie */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Recettes */}
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Recettes Totales</h3>
+          <p className="text-2xl font-bold text-green-700">{formatCurrency(stats.totalRecettesGlobal)}</p>
+          <div className="mt-2 text-xs space-y-1">
+             <div className="flex justify-between">
+                <span className="text-gray-500">Encaissé:</span>
+                <span className="font-medium text-gray-800">{formatCurrency(stats.totalRecettesRealized)}</span>
+             </div>
+             <div className="flex justify-between">
+                <span className="text-orange-500">À venir:</span>
+                <span className="font-medium text-orange-600">{formatCurrency(stats.totalRecettesPending)}</span>
+             </div>
+          </div>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow border-l-4 border-red-500">
-          <h3 className="text-gray-500 text-sm font-medium">Total Dépenses</h3>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalDepenses)}</p>
+
+        {/* Dépenses */}
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Dépenses Totales</h3>
+          <p className="text-2xl font-bold text-red-700">{formatCurrency(stats.totalDepensesGlobal)}</p>
+          <div className="mt-2 text-xs space-y-1">
+             <div className="flex justify-between">
+                <span className="text-gray-500">Payé:</span>
+                <span className="font-medium text-gray-800">{formatCurrency(stats.totalDepensesRealized)}</span>
+             </div>
+             <div className="flex justify-between">
+                <span className="text-orange-500">À venir:</span>
+                <span className="font-medium text-orange-600">{formatCurrency(stats.totalDepensesPending)}</span>
+             </div>
+          </div>
         </div>
-        <div className={`bg-white p-6 rounded-lg shadow border-l-4 ${stats.solde >= 0 ? 'border-blue-500' : 'border-orange-500'}`}>
-          <h3 className="text-gray-500 text-sm font-medium">Solde (Résultat)</h3>
-          <p className={`text-2xl font-bold ${stats.solde >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-            {formatCurrency(stats.solde)}
+
+        {/* Solde Réel */}
+        <div className={`bg-white p-4 rounded-lg shadow border-l-4 ${stats.soldeReel >= 0 ? 'border-blue-500' : 'border-orange-500'}`}>
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Trésorerie Actuelle</h3>
+          <p className={`text-2xl font-bold ${stats.soldeReel >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+            {formatCurrency(stats.soldeReel)}
           </p>
+          <p className="text-xs text-gray-400 mt-1">Ce qui est réellement en banque</p>
+        </div>
+
+        {/* Solde Projetté */}
+        <div className={`bg-white p-4 rounded-lg shadow border-l-4 border-indigo-500`}>
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Résultat Projeté</h3>
+          <p className={`text-2xl font-bold text-indigo-700`}>
+            {formatCurrency(stats.soldeProjete)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">Une fois tout encaissé et payé</p>
         </div>
       </div>
 
+      {/* Graphiques */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-4 rounded-lg shadow">
-          <h4 className="text-lg font-semibold mb-4 text-center">Répartition Recettes</h4>
+          <h4 className="text-lg font-semibold mb-4 text-center">Répartition Recettes (Engagé inclus)</h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -97,7 +158,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
         </div>
 
         <div className="bg-white p-4 rounded-lg shadow">
-          <h4 className="text-lg font-semibold mb-4 text-center">Répartition Dépenses</h4>
+          <h4 className="text-lg font-semibold mb-4 text-center">Répartition Dépenses (Engagé inclus)</h4>
           <div className="h-64">
              <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -115,7 +176,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       </div>
 
        <div className="bg-white p-4 rounded-lg shadow">
-         <h4 className="text-lg font-semibold mb-4 text-center">Balance</h4>
+         <h4 className="text-lg font-semibold mb-4 text-center">Balance : Réel vs À Venir</h4>
          <div className="h-64">
            <ResponsiveContainer width="100%" height="100%">
              <BarChart data={barData}>
@@ -123,8 +184,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
                <YAxis />
                <Tooltip formatter={(value: number) => formatCurrency(value)} />
                <Legend />
-               <Bar dataKey="Recettes" fill="#10B981" />
-               <Bar dataKey="Dépenses" fill="#EF4444" />
+               <Bar dataKey="Recettes" fill="#10B981" stackId="a" />
+               <Bar dataKey="Dépenses" fill="#EF4444" stackId="a" />
              </BarChart>
            </ResponsiveContainer>
          </div>
