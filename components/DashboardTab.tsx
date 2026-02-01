@@ -7,28 +7,47 @@ interface DashboardTabProps {
   data: AppData;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#FF6B6B', '#4ECDC4'];
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
   
   const stats = useMemo(() => {
-    const totalRecettes = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => acc + curr.amount, 0);
+    // 1. Calcul des recettes provenant de la saisie manuelle (Transactions)
+    const recettesManuelles = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => acc + curr.amount, 0);
+    
+    // 2. Calcul des recettes provenant du module Sponsors (uniquement le montant 'Versé')
+    const recettesSponsors = data.sponsors.reduce((acc, curr) => acc + (curr.amountPaid || 0), 0);
+
+    // Total combiné
+    const totalRecettes = recettesManuelles + recettesSponsors;
+
+    // Total Dépenses
     const totalDepenses = data.realized.filter(t => t.type === 'DEPENSE').reduce((acc, curr) => acc + curr.amount, 0);
+    
+    // Résultat
     const solde = totalRecettes - totalDepenses;
     
-    // Group by category for pie charts
+    // Préparation des données pour le Pie Chart (Recettes)
     const recettesByCategory = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
 
+    // AJOUT : On injecte les sponsors comme une catégorie de recette dans le graphique
+    if (recettesSponsors > 0) {
+      const labelSponsor = "Partenaires & Sponsors";
+      // Si une catégorie existe déjà avec ce nom, on additionne, sinon on crée
+      recettesByCategory[labelSponsor] = (recettesByCategory[labelSponsor] || 0) + recettesSponsors;
+    }
+
+    // Préparation des données pour le Pie Chart (Dépenses)
     const depensesByCategory = data.realized.filter(t => t.type === 'DEPENSE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
 
-    return { totalRecettes, totalDepenses, solde, recettesByCategory, depensesByCategory };
-  }, [data.realized]);
+    return { totalRecettes, totalDepenses, solde, recettesByCategory, depensesByCategory, recettesSponsors };
+  }, [data.realized, data.sponsors]); // On recalcule si les transactions OU les sponsors changent
 
   const pieDataRecettes = Object.keys(stats.recettesByCategory).map(key => ({ name: key, value: stats.recettesByCategory[key] }));
   const pieDataDepenses = Object.keys(stats.depensesByCategory).map(key => ({ name: key, value: stats.depensesByCategory[key] }));
@@ -43,6 +62,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
           <h3 className="text-gray-500 text-sm font-medium">Total Recettes</h3>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRecettes)}</p>
+          {stats.recettesSponsors > 0 && (
+            <p className="text-xs text-gray-500 mt-1">Dont {formatCurrency(stats.recettesSponsors)} de sponsors</p>
+          )}
         </div>
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-red-500">
           <h3 className="text-gray-500 text-sm font-medium">Total Dépenses</h3>
