@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Transaction, AppData, TransactionType } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, PlusCircle, AlertCircle } from 'lucide-react';
+import { Trash2, PlusCircle, AlertCircle, Edit, X } from 'lucide-react';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
@@ -22,6 +22,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   onUpdate
 }) => {
   const [type, setType] = useState<TransactionType>('RECETTE');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Transaction>>({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -56,36 +57,91 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }));
   };
 
+  const startEdit = (t: Transaction) => {
+    setType(t.type); // Switch to the correct tab context
+    setEditingId(t.id);
+    setFormData({
+      date: t.date,
+      description: t.description,
+      category: t.category,
+      amount: t.amount,
+      eventId: t.eventId,
+      isBenevolat: t.isBenevolat,
+      hours: t.hours,
+      hourlyRate: t.hourlyRate
+    });
+    // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      description: '',
+      category: '',
+      amount: 0,
+      isBenevolat: false,
+      hours: 0,
+      hourlyRate: 11.65
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.description || !formData.category) return;
 
-    const newTransaction: Transaction = {
-      id: generateId(),
-      type: type,
-      date: formData.date!,
-      description: formData.description!,
-      category: formData.category!,
-      amount: Number(formData.amount),
-      eventId: formData.eventId,
-      isBenevolat: formData.isBenevolat,
-      hours: formData.hours ? Number(formData.hours) : undefined,
-      hourlyRate: formData.hourlyRate ? Number(formData.hourlyRate) : undefined,
-    };
+    if (editingId) {
+      // Update existing
+      const updatedTransactions = transactions.map(t => {
+        if (t.id === editingId) {
+          return {
+            ...t,
+            type: type, // Ensure type follows current tab if changed (though usually we stick to logic)
+            date: formData.date!,
+            description: formData.description!,
+            category: formData.category!,
+            amount: Number(formData.amount),
+            eventId: formData.eventId,
+            isBenevolat: formData.isBenevolat,
+            hours: formData.hours ? Number(formData.hours) : undefined,
+            hourlyRate: formData.hourlyRate ? Number(formData.hourlyRate) : undefined,
+          };
+        }
+        return t;
+      });
+      onUpdate(updatedTransactions);
+      cancelEdit();
+    } else {
+      // Create new
+      const newTransaction: Transaction = {
+        id: generateId(),
+        type: type,
+        date: formData.date!,
+        description: formData.description!,
+        category: formData.category!,
+        amount: Number(formData.amount),
+        eventId: formData.eventId,
+        isBenevolat: formData.isBenevolat,
+        hours: formData.hours ? Number(formData.hours) : undefined,
+        hourlyRate: formData.hourlyRate ? Number(formData.hourlyRate) : undefined,
+      };
 
-    onUpdate([...transactions, newTransaction]);
-    // Reset form partially
-    setFormData({
-      ...formData,
-      description: '',
-      amount: 0,
-      hours: 0,
-    });
+      onUpdate([...transactions, newTransaction]);
+      // Reset form partially
+      setFormData({
+        ...formData,
+        description: '',
+        amount: 0,
+        hours: 0,
+      });
+    }
   };
 
   const deleteTransaction = (id: string) => {
     if(window.confirm('Supprimer cette ligne ?')) {
       onUpdate(transactions.filter(t => t.id !== id));
+      if (editingId === id) cancelEdit();
     }
   };
 
@@ -100,22 +156,25 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           <Button 
             className="flex-1"
             variant={type === 'RECETTE' ? 'primary' : 'secondary'}
-            onClick={() => setType('RECETTE')}
+            onClick={() => { setType('RECETTE'); cancelEdit(); }}
           >
             Recettes
           </Button>
           <Button 
             className="flex-1"
             variant={type === 'DEPENSE' ? 'danger' : 'secondary'}
-            onClick={() => setType('DEPENSE')}
+            onClick={() => { setType('DEPENSE'); cancelEdit(); }}
           >
             Dépenses
           </Button>
         </div>
 
         <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-          <PlusCircle className="w-5 h-5" />
-          {isProvisional ? 'Ajouter Prévision' : 'Ajouter Opération'}
+          {editingId ? <Edit className="w-5 h-5 text-indigo-600" /> : <PlusCircle className="w-5 h-5" />}
+          {editingId 
+            ? 'Modifier l\'opération' 
+            : (isProvisional ? 'Ajouter Prévision' : 'Ajouter Opération')
+          }
         </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -206,9 +265,16 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             />
           </div>
 
-          <Button type="submit" className="w-full">
-            Ajouter {type === 'RECETTE' ? 'Recette' : 'Dépense'}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="submit" className="flex-1" variant={editingId ? 'secondary' : 'primary'}>
+              {editingId ? 'Modifier' : (type === 'RECETTE' ? 'Ajouter Recette' : 'Ajouter Dépense')}
+            </Button>
+            {editingId && (
+              <Button type="button" variant="ghost" onClick={cancelEdit}>
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -242,7 +308,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               {filteredTransactions.map(t => {
                 const evt = events.find(e => e.id === t.eventId);
                 return (
-                  <tr key={t.id} className="hover:bg-gray-50">
+                  <tr key={t.id} className={`hover:bg-gray-50 ${editingId === t.id ? 'bg-blue-50' : ''}`}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.date}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
@@ -260,6 +326,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                       {formatCurrency(t.amount)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button onClick={() => startEdit(t)} className="text-indigo-600 hover:text-indigo-900 mr-2">
+                        <Edit className="w-4 h-4" />
+                      </button>
                       <button onClick={() => deleteTransaction(t.id)} className="text-red-600 hover:text-red-900">
                         <Trash2 className="w-4 h-4" />
                       </button>

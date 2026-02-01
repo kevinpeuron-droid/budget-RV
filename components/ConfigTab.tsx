@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AppData, AppEvent } from '../types';
 import { generateId } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Edit, X } from 'lucide-react';
 
 interface ConfigTabProps {
   data: AppData;
@@ -13,6 +13,7 @@ interface ConfigTabProps {
 export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, onUpdateEvents }) => {
   const [newCatRecette, setNewCatRecette] = useState('');
   const [newCatDepense, setNewCatDepense] = useState('');
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [newEvent, setNewEvent] = useState<Partial<AppEvent>>({ name: '', date: '', color: '#3B82F6' });
 
   const addCategory = (type: 'RECETTE' | 'DEPENSE') => {
@@ -30,21 +31,45 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
     }
   };
 
-  const addEvent = () => {
+  const handleEventSubmit = () => {
     if (!newEvent.name) return;
-    const evt: AppEvent = {
-      id: generateId(),
-      name: newEvent.name,
-      date: newEvent.date || '',
-      color: newEvent.color || '#3B82F6'
-    };
-    onUpdateEvents([...data.events, evt]);
+
+    if (editingEventId) {
+      // Edit mode
+      const updatedEvents = data.events.map(e => 
+        e.id === editingEventId 
+        ? { ...e, name: newEvent.name!, date: newEvent.date || '', color: newEvent.color || '#3B82F6' }
+        : e
+      );
+      onUpdateEvents(updatedEvents);
+      cancelEventEdit();
+    } else {
+      // Create mode
+      const evt: AppEvent = {
+        id: generateId(),
+        name: newEvent.name,
+        date: newEvent.date || '',
+        color: newEvent.color || '#3B82F6'
+      };
+      onUpdateEvents([...data.events, evt]);
+      setNewEvent({ name: '', date: '', color: '#3B82F6' });
+    }
+  };
+
+  const startEventEdit = (evt: AppEvent) => {
+    setEditingEventId(evt.id);
+    setNewEvent({ name: evt.name, date: evt.date, color: evt.color });
+  };
+
+  const cancelEventEdit = () => {
+    setEditingEventId(null);
     setNewEvent({ name: '', date: '', color: '#3B82F6' });
   };
 
   const removeEvent = (id: string) => {
     if (window.confirm('Supprimer cet événement ?')) {
       onUpdateEvents(data.events.filter(e => e.id !== id));
+      if (editingEventId === id) cancelEventEdit();
     }
   };
 
@@ -102,11 +127,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
              <input type="date" className="flex-1 border rounded px-2 py-1" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
              <input type="color" className="w-10 h-8 p-0 border-0" value={newEvent.color} onChange={e => setNewEvent({...newEvent, color: e.target.value})} />
           </div>
-          <Button size="sm" className="w-full" onClick={addEvent}>Ajouter Événement</Button>
+          <div className="flex gap-2">
+            <Button size="sm" className="w-full" onClick={handleEventSubmit}>
+              {editingEventId ? 'Modifier' : 'Ajouter'}
+            </Button>
+            {editingEventId && (
+              <Button size="sm" variant="ghost" onClick={cancelEventEdit}>
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </div>
         <ul className="space-y-2">
           {data.events.map(evt => (
-            <li key={evt.id} className="flex justify-between items-center bg-white border p-2 rounded">
+            <li key={evt.id} className={`flex justify-between items-center border p-2 rounded ${editingEventId === evt.id ? 'bg-blue-50' : 'bg-white'}`}>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full" style={{backgroundColor: evt.color}}></span>
                 <div>
@@ -114,7 +148,10 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
                   <div className="text-xs text-gray-500">{evt.date}</div>
                 </div>
               </div>
-              <button onClick={() => removeEvent(evt.id)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
+              <div className="flex gap-1">
+                 <button onClick={() => startEventEdit(evt)} className="text-indigo-600 p-1"><Edit className="w-4 h-4" /></button>
+                 <button onClick={() => removeEvent(evt.id)} className="text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+              </div>
             </li>
           ))}
         </ul>

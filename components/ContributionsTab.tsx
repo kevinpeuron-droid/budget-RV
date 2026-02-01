@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Contribution } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Edit, X } from 'lucide-react';
 
 interface ContributionsTabProps {
   contributions: Contribution[];
@@ -10,6 +10,7 @@ interface ContributionsTabProps {
 }
 
 export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contributions, onUpdate }) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Contribution>>({
     description: '',
     quantity: 1,
@@ -17,24 +18,57 @@ export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contribution
     beneficiary: ''
   });
 
+  const startEdit = (c: Contribution) => {
+    setEditingId(c.id);
+    setFormData({
+      description: c.description,
+      quantity: c.quantity,
+      unitValue: c.unitValue,
+      beneficiary: c.beneficiary
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setFormData({ description: '', quantity: 1, unitValue: 0, beneficiary: '' });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.description) return;
 
-    const newContrib: Contribution = {
-      id: generateId(),
-      description: formData.description!,
-      quantity: Number(formData.quantity),
-      unitValue: Number(formData.unitValue),
-      beneficiary: formData.beneficiary || ''
-    };
-
-    onUpdate([...contributions, newContrib]);
-    setFormData({ description: '', quantity: 1, unitValue: 0, beneficiary: '' });
+    if (editingId) {
+      // Update
+      const updatedList = contributions.map(c => 
+        c.id === editingId 
+        ? {
+            ...c,
+            description: formData.description!,
+            quantity: Number(formData.quantity),
+            unitValue: Number(formData.unitValue),
+            beneficiary: formData.beneficiary || ''
+          }
+        : c
+      );
+      onUpdate(updatedList);
+      cancelEdit();
+    } else {
+      // Create
+      const newContrib: Contribution = {
+        id: generateId(),
+        description: formData.description!,
+        quantity: Number(formData.quantity),
+        unitValue: Number(formData.unitValue),
+        beneficiary: formData.beneficiary || ''
+      };
+      onUpdate([...contributions, newContrib]);
+      setFormData({ description: '', quantity: 1, unitValue: 0, beneficiary: '' });
+    }
   };
 
   const deleteItem = (id: string) => {
     onUpdate(contributions.filter(c => c.id !== id));
+    if(editingId === id) cancelEdit();
   };
 
   const totalValuation = useMemo(() => {
@@ -45,7 +79,8 @@ export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contribution
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="bg-white p-6 rounded-lg shadow lg:col-span-1 h-fit">
         <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-          <Plus className="w-5 h-5" /> Ajouter Contribution en Nature
+          {editingId ? <Edit className="w-5 h-5 text-indigo-600" /> : <Plus className="w-5 h-5" />}
+          {editingId ? 'Modifier Contribution' : 'Ajouter Contribution en Nature'}
         </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
@@ -89,7 +124,17 @@ export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contribution
             value={formData.beneficiary}
             onChange={e => setFormData({ ...formData, beneficiary: e.target.value })}
           />
-          <Button type="submit" className="w-full">Ajouter</Button>
+          
+          <div className="flex gap-2">
+             <Button type="submit" className="flex-1" variant={editingId ? 'secondary' : 'primary'}>
+               {editingId ? 'Modifier' : 'Ajouter'}
+             </Button>
+             {editingId && (
+              <Button type="button" variant="ghost" onClick={cancelEdit}>
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -110,7 +155,7 @@ export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contribution
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {contributions.map(c => (
-              <tr key={c.id}>
+              <tr key={c.id} className={editingId === c.id ? 'bg-blue-50' : ''}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {c.description}
                     <div className="text-xs text-gray-500">{c.beneficiary}</div>
@@ -119,6 +164,9 @@ export const ContributionsTab: React.FC<ContributionsTabProps> = ({ contribution
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(c.unitValue)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">{formatCurrency(c.quantity * c.unitValue)}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                  <button onClick={() => startEdit(c)} className="text-indigo-600 hover:text-indigo-900 mr-2">
+                    <Edit className="w-4 h-4" />
+                  </button>
                   <button onClick={() => deleteItem(c.id)} className="text-red-600 hover:text-red-900">
                     <Trash2 className="w-4 h-4" />
                   </button>
