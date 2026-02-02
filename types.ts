@@ -1,5 +1,4 @@
 
-
 export type TransactionType = 'RECETTE' | 'DEPENSE';
 export type TransactionStatus = 'REALIZED' | 'PENDING'; // REALIZED = Payé/Encaissé, PENDING = Engagé/Sur devis
 
@@ -61,6 +60,14 @@ export interface Contact {
   notes?: string;
 }
 
+export interface Volunteer {
+  id: string;
+  name: string;
+  role: string;
+  isOrganizer: boolean;
+  createdAt: number;
+}
+
 export interface AppEvent {
   id: string;
   name: string;
@@ -90,55 +97,45 @@ export interface AppData {
   contributions: Contribution[];
   sponsors: Sponsor[];
   contacts: Contact[];
+  volunteers: Volunteer[]; // Nouveau champ
   budget: BudgetLine[];
   budgetYear: number;
   categoriesRecette: string[];
   categoriesDepense: string[];
-  events: AppEvent[];
-  bankLines: BankLine[]; // Nouveau champ pour le relevé bancaire
-  lastPointedDate?: string; // Date de la dernière opération importée/pointée pour éviter les doublons
+  bankLines: BankLine[];
+  lastPointedDate?: string;
 }
 
 export interface AppState extends AppData {
   archives: Archive[];
+  eventsList: AppEvent[]; // Liste globale des événements disponibles
 }
 
 export const DEFAULT_CATEGORIES_RECETTE = [
-  'Adhésions', 'Subventions', 'Vente Produits', 'Dons', 'Bénévolat', 'Sponsoring'
+  'Inscriptions', 'Aides Publiques', 'Partenaires', 'Ventes', 'Divers'
 ];
 
 export const DEFAULT_CATEGORIES_DEPENSE = [
-  'Achats', 'Location', 'Assurance', 'Frais Bancaires', 'Communication', 'Bénévolat'
+  'Logistique', 'Animation', 'Sécurité', 'Communication', 'Achats Divers'
 ];
 
 export const DEFAULT_BUDGET_LINES: BudgetLine[] = [
-  // RECETTES
-  { id: 'r1', section: 'RECETTE', category: 'Participation des délégations', label: 'Inscriptions', amountNMinus1: 0, amountN: 0 },
-  { id: 'r2', section: 'RECETTE', category: 'Participation des délégations', label: 'Hébergement', amountNMinus1: 0, amountN: 0 },
-  { id: 'r3', section: 'RECETTE', category: 'Participation des délégations', label: 'Restauration', amountNMinus1: 0, amountN: 0 },
-  { id: 'r4', section: 'RECETTE', category: 'Aides publiques', label: 'État', amountNMinus1: 0, amountN: 0 },
-  { id: 'r5', section: 'RECETTE', category: 'Aides publiques', label: 'Région', amountNMinus1: 0, amountN: 0 },
-  { id: 'r6', section: 'RECETTE', category: 'Aides publiques', label: 'Département', amountNMinus1: 0, amountN: 0 },
-  { id: 'r7', section: 'RECETTE', category: 'Aides publiques', label: 'Ville', amountNMinus1: 0, amountN: 0 },
-  { id: 'r8', section: 'RECETTE', category: 'Partenariats', label: 'Sponsors privés', amountNMinus1: 0, amountN: 0 },
-  { id: 'r9', section: 'RECETTE', category: 'Partenariats', label: 'Mécénat', amountNMinus1: 0, amountN: 0 },
-  { id: 'r10', section: 'RECETTE', category: 'Ventes', label: 'Buvette', amountNMinus1: 0, amountN: 0 },
-  { id: 'r11', section: 'RECETTE', category: 'Ventes', label: 'Boutique', amountNMinus1: 0, amountN: 0 },
+  // RECETTES (Produits)
+  { id: 'inc1', section: 'RECETTE', category: 'Inscriptions', label: 'Inscriptions Participants', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc2', section: 'RECETTE', category: 'Aides Publiques', label: 'Subventions Mairie', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc3', section: 'RECETTE', category: 'Aides Publiques', label: 'Subventions Département', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc4', section: 'RECETTE', category: 'Partenaires', label: 'Sponsors Privés', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc5', section: 'RECETTE', category: 'Ventes', label: 'Buvette & Restauration', amountNMinus1: 0, amountN: 0 },
 
-  // DEPENSES
-  { id: 'd1', section: 'DEPENSE', category: 'Logistique', label: 'Location matériel', amountNMinus1: 0, amountN: 0 },
-  { id: 'd2', section: 'DEPENSE', category: 'Logistique', label: 'Tentes', amountNMinus1: 0, amountN: 0 },
-  { id: 'd3', section: 'DEPENSE', category: 'Logistique', label: 'Sanitaires', amountNMinus1: 0, amountN: 0 },
-  { id: 'd4', section: 'DEPENSE', category: 'Animation & Sport', label: 'Trophées', amountNMinus1: 0, amountN: 0 },
-  { id: 'd5', section: 'DEPENSE', category: 'Animation & Sport', label: 'Dossards', amountNMinus1: 0, amountN: 0 },
-  { id: 'd6', section: 'DEPENSE', category: 'Animation & Sport', label: 'Sono', amountNMinus1: 0, amountN: 0 },
-  { id: 'd7', section: 'DEPENSE', category: 'Sécurité', label: 'Secouristes', amountNMinus1: 0, amountN: 0 },
-  { id: 'd8', section: 'DEPENSE', category: 'Sécurité', label: 'Signalétique', amountNMinus1: 0, amountN: 0 },
-  { id: 'd9', section: 'DEPENSE', category: 'Communication', label: 'Affiches', amountNMinus1: 0, amountN: 0 },
-  { id: 'd10', section: 'DEPENSE', category: 'Communication', label: 'Publicité', amountNMinus1: 0, amountN: 0 },
+  // DEPENSES (Charges)
+  { id: 'exp1', section: 'DEPENSE', category: 'Logistique', label: 'Location Matériel', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp2', section: 'DEPENSE', category: 'Logistique', label: 'Ravitaillement', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp3', section: 'DEPENSE', category: 'Animation', label: 'Récompenses & Trophées', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp4', section: 'DEPENSE', category: 'Sécurité', label: 'Secouristes', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp5', section: 'DEPENSE', category: 'Communication', label: 'Flyers & Affiches', amountNMinus1: 0, amountN: 0 },
 
   // VALORISATION
-  { id: 'v1', section: 'VALORISATION', category: 'Bénévolat', label: 'Heures bénévoles', amountNMinus1: 0, amountN: 0 },
-  { id: 'v2', section: 'VALORISATION', category: 'Prêt de matériel', label: 'Véhicules', amountNMinus1: 0, amountN: 0 },
-  { id: 'v3', section: 'VALORISATION', category: 'Mise à disposition de locaux', label: 'Salles municipales', amountNMinus1: 0, amountN: 0 },
+  { id: 'val1', section: 'VALORISATION', category: 'Bénévolat', label: 'Heures Bénévoles', amountNMinus1: 0, amountN: 0 },
+  { id: 'val2', section: 'VALORISATION', category: 'Matériel', label: 'Prêt de Matériel', amountNMinus1: 0, amountN: 0 },
+  { id: 'val3', section: 'VALORISATION', category: 'Locaux', label: 'Mise à dispo Salles', amountNMinus1: 0, amountN: 0 },
 ];

@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { 
-  AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine, BankLine,
+  AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine, BankLine, Volunteer,
   DEFAULT_CATEGORIES_RECETTE, DEFAULT_CATEGORIES_DEPENSE, DEFAULT_BUDGET_LINES 
 } from './types';
+import { db, ref, set, push, onValue } from './firebase';
+
 import { DashboardTab } from './components/DashboardTab';
 import { TransactionsTab } from './components/TransactionsTab';
 import { BudgetTab } from './components/BudgetTab';
 import { SponsorsTab } from './components/SponsorsTab';
 import { ContributionsTab } from './components/ContributionsTab';
+import { VolunteersTab } from './components/VolunteersTab';
 import { ConfigTab } from './components/ConfigTab';
 import { ArchivesTab } from './components/ArchivesTab';
 import { DirectoryTab } from './components/DirectoryTab';
@@ -17,16 +21,8 @@ import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
   Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
-  Landmark
+  Landmark, Plus, Tent
 } from 'lucide-react';
-
-const STORAGE_KEY = 'gestion_asso_data';
-
-const INITIAL_EVENTS: AppEvent[] = [
-  { id: 'evt1', name: 'Trail des Lucioles', date: '', color: '#10B981' }, // Green
-  { id: 'evt2', name: "Rand'eau Vive", date: '', color: '#3B82F6' }, // Blue
-  { id: 'evt3', name: 'Commun', date: '', color: '#6B7280' }, // Gray
-];
 
 const INITIAL_STATE: AppState = {
   realized: [],
@@ -34,129 +30,155 @@ const INITIAL_STATE: AppState = {
   contributions: [],
   sponsors: [],
   contacts: [],
-  budget: DEFAULT_BUDGET_LINES, // Initialize with default budget lines
+  volunteers: [],
+  budget: DEFAULT_BUDGET_LINES,
   budgetYear: new Date().getFullYear(),
   categoriesRecette: DEFAULT_CATEGORIES_RECETTE,
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
-  events: INITIAL_EVENTS,
+  bankLines: [],
+  lastPointedDate: '',
   archives: [],
-  bankLines: [], // New bank lines state
-  lastPointedDate: '' // Initialisation vide
+  eventsList: [] // Sera peuplé par la liste des événements
 };
 
-type TabId = 'dashboard' | 'realized' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives' | 'bank';
+type TabId = 'dashboard' | 'realized' | 'bank' | 'budget' | 'volunteers' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [data, setData] = useState<AppState>(INITIAL_STATE);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [currentEventId, setCurrentEventId] = useState<string | null>(null);
+  const [eventsList, setEventsList] = useState<Record<string, { name: string }>>({});
+  const [loading, setLoading] = useState(true);
 
-  // 1. & 2. Persistence Logic
+  // 1. Charger la liste des événements au démarrage
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Ensure contacts array exists for older save versions
-        if (!parsed.contacts) parsed.contacts = [];
-        // Ensure budget array exists
-        if (!parsed.budget || parsed.budget.length === 0) parsed.budget = DEFAULT_BUDGET_LINES;
-        // Ensure budgetYear exists
-        if (!parsed.budgetYear) parsed.budgetYear = new Date().getFullYear();
-        // Ensure bankLines exists
-        if (!parsed.bankLines) parsed.bankLines = [];
-        // Ensure events exist if they were empty in previous save
-        if (!parsed.events || parsed.events.length === 0) parsed.events = INITIAL_EVENTS;
-        
-        setData(parsed);
-      } catch (e) {
-        console.error("Failed to load data", e);
+    const eventsRef = ref(db, 'events_meta');
+    return onValue(eventsRef, (snapshot) => {
+      const val = snapshot.val() || {};
+      setEventsList(val);
+      
+      // Auto-select le premier si aucun sélectionné
+      if (!currentEventId && Object.keys(val).length > 0) {
+        // Idéalement le plus récent
+        const keys = Object.keys(val);
+        const lastKey = keys[keys.length - 1];
+        setCurrentEventId(lastKey);
       }
-    }
-    setIsLoaded(true);
+      setLoading(false);
+    });
   }, []);
 
+  // 2. Charger les données de l'événement sélectionné
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if (!currentEventId) {
+      // Si aucun événement, on reset les données opérationnelles
+      setData(prev => ({ ...INITIAL_STATE, contacts: prev.contacts, archives: prev.archives }));
+      return;
     }
-  }, [data, isLoaded]);
 
-  // Data helpers
-  const updateRealized = (transactions: Transaction[]) => setData(prev => ({ ...prev, realized: transactions }));
-  // Provisional transactions list is kept in data but not shown in this specific 'budget' view anymore, but we can keep the helper
-  const updateProvisional = (transactions: Transaction[]) => setData(prev => ({ ...prev, provisional: transactions }));
-  const updateBudget = (budgetLines: BudgetLine[]) => setData(prev => ({ ...prev, budget: budgetLines }));
-  const updateBudgetYear = (year: number) => setData(prev => ({ ...prev, budgetYear: year }));
-  const updateSponsors = (sponsors: Sponsor[]) => setData(prev => ({ ...prev, sponsors }));
-  const updateContributions = (contributions: Contribution[]) => setData(prev => ({ ...prev, contributions }));
-  const updateContacts = (contacts: Contact[]) => setData(prev => ({ ...prev, contacts }));
-  const updateEvents = (events: AppEvent[]) => setData(prev => ({ ...prev, events }));
+    const eventDataRef = ref(db, `events_data/${currentEventId}`);
+    return onValue(eventDataRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val) {
+        // Merge avec l'état initial pour garantir que tous les tableaux existent
+        setData(prev => ({
+          ...INITIAL_STATE,
+          ...val,
+          // S'assurer que les tableaux ne sont pas undefined
+          realized: val.realized || [],
+          budget: val.budget || DEFAULT_BUDGET_LINES,
+          volunteers: val.volunteers || [],
+          sponsors: val.sponsors || [],
+          contacts: val.contacts || [], // Annuaire peut être global ou par event, ici par event pour simplicité
+          bankLines: val.bankLines || [],
+          contributions: val.contributions || [],
+          categoriesRecette: val.categoriesRecette || DEFAULT_CATEGORIES_RECETTE,
+          categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
+        }));
+      } else {
+        // Nouvel événement vide
+        setData({ ...INITIAL_STATE });
+      }
+    });
+  }, [currentEventId]);
+
+  // --- Helpers de mise à jour Firebase ---
+  
+  const syncToFirebase = (key: keyof AppState, value: any) => {
+    if (!currentEventId) return;
+    set(ref(db, `events_data/${currentEventId}/${key}`), value);
+  };
+
+  const updateRealized = (transactions: Transaction[]) => syncToFirebase('realized', transactions);
+  const updateBudget = (budgetLines: BudgetLine[]) => syncToFirebase('budget', budgetLines);
+  const updateBudgetYear = (year: number) => syncToFirebase('budgetYear', year);
+  const updateSponsors = (sponsors: Sponsor[]) => syncToFirebase('sponsors', sponsors);
+  const updateContributions = (contributions: Contribution[]) => syncToFirebase('contributions', contributions);
+  const updateContacts = (contacts: Contact[]) => syncToFirebase('contacts', contacts);
+  const updateVolunteers = (volunteers: Volunteer[]) => syncToFirebase('volunteers', volunteers);
+  const updateBankLines = (lines: BankLine[]) => syncToFirebase('bankLines', lines);
+  const updateLastPointedDate = (date: string) => syncToFirebase('lastPointedDate', date);
+  
   const updateCategories = (type: 'RECETTE' | 'DEPENSE', cats: string[]) => {
-    if (type === 'RECETTE') setData(prev => ({ ...prev, categoriesRecette: cats }));
-    else setData(prev => ({ ...prev, categoriesDepense: cats }));
+    if (type === 'RECETTE') syncToFirebase('categoriesRecette', cats);
+    else syncToFirebase('categoriesDepense', cats);
   };
-  const updateBankLines = (lines: BankLine[]) => setData(prev => ({ ...prev, bankLines: lines }));
-  const updateLastPointedDate = (date: string) => setData(prev => ({ ...prev, lastPointedDate: date }));
 
-  // NEW: Link a bank line to a transaction
+  // Création d'un nouvel événement
+  const handleCreateEvent = () => {
+    const name = prompt("Nom de la nouvelle édition (ex: Rand'eau Vive 2026) :");
+    if (name) {
+      const newRef = push(ref(db, 'events_meta'));
+      const newId = newRef.key;
+      set(newRef, { 
+        id: newId, 
+        name, 
+        createdAt: Date.now() 
+      });
+      
+      // Initialiser les données par défaut
+      set(ref(db, `events_data/${newId}`), {
+        ...INITIAL_STATE,
+        budgetYear: new Date().getFullYear()
+      });
+      
+      setCurrentEventId(newId);
+    }
+  };
+
+  // Logic pour la Banque
   const handleLinkTransaction = (bankId: string, transactionId: string) => {
-    setData(prev => {
-      // 1. Update the Bank Line
-      const updatedBankLines = prev.bankLines.map(line => 
-        line.id === bankId ? { ...line, transactionId } : line
-      );
-
-      // 2. Update the Transaction
-      // - Change status to REALIZED
-      // - Ideally set date to bank date (optional, but good for accuracy)
-      const bankLine = prev.bankLines.find(l => l.id === bankId);
-      const updatedTransactions = prev.realized.map(t => 
-        t.id === transactionId 
-        ? { ...t, status: 'REALIZED' as const, date: bankLine ? bankLine.date : t.date } 
-        : t
-      );
-
-      return {
-        ...prev,
-        bankLines: updatedBankLines,
-        realized: updatedTransactions
-      };
-    });
+    if (!currentEventId) return;
+    const updatedBankLines = data.bankLines.map(line => 
+      line.id === bankId ? { ...line, transactionId } : line
+    );
+    const bankLine = data.bankLines.find(l => l.id === bankId);
+    const updatedTransactions = data.realized.map(t => 
+      t.id === transactionId 
+      ? { ...t, status: 'REALIZED' as const, date: bankLine ? bankLine.date : t.date } 
+      : t
+    );
+    updateBankLines(updatedBankLines);
+    updateRealized(updatedTransactions);
   };
 
-  // NEW: Unlink a bank line
   const handleUnlinkTransaction = (bankId: string) => {
-    setData(prev => {
-      const bankLine = prev.bankLines.find(l => l.id === bankId);
-      if (!bankLine || !bankLine.transactionId) return prev;
-
-      const transactionId = bankLine.transactionId;
-
-      // 1. Remove link from Bank Line
-      const updatedBankLines = prev.bankLines.map(line => 
-        line.id === bankId ? { ...line, transactionId: undefined } : line
-      );
-
-      // 2. Revert transaction to PENDING (Assume if we unlink, we go back to unknown state)
-      // Note: User can manually set it back to realized if needed.
-      const updatedTransactions = prev.realized.map(t => 
-        t.id === transactionId ? { ...t, status: 'PENDING' as const } : t
-      );
-
-      return {
-        ...prev,
-        bankLines: updatedBankLines,
-        realized: updatedTransactions
-      };
-    });
+    const bankLine = data.bankLines.find(l => l.id === bankId);
+    if (!bankLine || !bankLine.transactionId) return;
+    const transactionId = bankLine.transactionId;
+    const updatedBankLines = data.bankLines.map(line => 
+      line.id === bankId ? { ...line, transactionId: undefined } : line
+    );
+    const updatedTransactions = data.realized.map(t => 
+      t.id === transactionId ? { ...t, status: 'PENDING' as const } : t
+    );
+    updateBankLines(updatedBankLines);
+    updateRealized(updatedTransactions);
   };
 
-  // NEW: Create transaction from bank line
   const handleCreateFromBank = (bankLineId: string, category: string, budgetLineId: string, description?: string) => {
       const bankLine = data.bankLines.find(l => l.id === bankLineId);
       if(!bankLine) return;
-
       const newTransaction: Transaction = {
           id: generateId(),
           date: bankLine.date,
@@ -168,157 +190,86 @@ function App() {
           budgetLineId: budgetLineId,
           isBenevolat: false
       };
-
-      setData(prev => {
-          return {
-              ...prev,
-              realized: [...prev.realized, newTransaction],
-              bankLines: prev.bankLines.map(l => l.id === bankLineId ? { ...l, transactionId: newTransaction.id } : l)
-          };
-      });
+      const updatedTransactions = [...data.realized, newTransaction];
+      const updatedBankLines = data.bankLines.map(l => l.id === bankLineId ? { ...l, transactionId: newTransaction.id } : l);
+      updateRealized(updatedTransactions);
+      updateBankLines(updatedBankLines);
   };
 
-  // 9. Exports
+  // Export CSV
+  const handleExportCSV = () => {
+    const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
+    const csvContent = convertToCSV(data.realized, headers);
+    downloadCSV(csvContent, `transactions_${eventsList[currentEventId || '']?.name || 'export'}.csv`);
+  };
+
+  // Les fonctions JSON sont moins pertinentes avec Firebase mais on les garde pour backup local
   const handleExportJSON = () => {
     const dataStr = JSON.stringify(data, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `gestion_asso_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `backup_${eventsList[currentEventId || '']?.name || 'data'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleImportJSON = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const json = JSON.parse(e.target?.result as string);
-        if (window.confirm("Remplacer les données actuelles par le fichier importé ?")) {
-          setData(json);
-        }
-      } catch (err) {
-        alert("Fichier invalide");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleExportCSV = () => {
-    // Determine what to export based on tab, or export all realized by default
-    const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
-    const csvContent = convertToCSV(data.realized, headers);
-    downloadCSV(csvContent, 'transactions_realisees.csv');
-  };
-
-  // 8. Archives
-  const archiveCurrentState = () => {
-    const archiveName = prompt("Nom de l'archive (ex: Bilan 2023)", `Bilan ${new Date().getFullYear()}`);
-    if(!archiveName) return;
-
-    const newArchive: Archive = {
-      id: generateId(),
-      dateArchived: new Date().toISOString(),
-      name: archiveName,
-      data: { ...data } // copy current data
-    };
-
-    // Logique pour conserver les sponsors tout en réinitialisant les montants pour la nouvelle année
-    const carriedOverSponsors = data.sponsors.map(s => ({
-      ...s,
-      lastYearTotal: s.amountPaid, // On sauvegarde ce qui a été payé cette année
-      amountPaid: 0,               // On remet le compteur à zéro pour la nouvelle année
-      datePaid: undefined,         // Reset de la date de paiement
-      amountPromised: 0,           // On remet la promesse à zéro
-      status: 'Prospect' as const  // On remet le statut à 'Prospect' pour relancer le démarchage
-    }));
-
-    // Reset current operational data but keep configs, archives, contacts AND sponsors (with reset values)
-    const newBudget = data.budget.map(l => ({
-      ...l,
-      amountNMinus1: l.amountN,
-      amountN: 0
-    }));
-    
-    setData(prev => ({
-      ...INITIAL_STATE,
-      categoriesRecette: prev.categoriesRecette,
-      categoriesDepense: prev.categoriesDepense,
-      events: prev.events,
-      contacts: prev.contacts, // Conservation de l'annuaire
-      sponsors: carriedOverSponsors, // Conservation sponsors
-      budget: newBudget, // Report du budget N en N-1
-      budgetYear: prev.budgetYear + 1, // Incrémenter l'année
-      archives: [...prev.archives, newArchive]
-    }));
-  };
-
-  const loadArchive = (archive: Archive) => {
-    setData({
-      ...archive.data,
-      archives: data.archives // Keep archives list intact so we can switch back
-    });
-  };
-
-  const deleteArchive = (id: string) => {
-    setData(prev => ({
-      ...prev,
-      archives: prev.archives.filter(a => a.id !== id)
-    }));
-  };
-
-  // Render logic
-  if (!isLoaded) return <div className="p-10 text-center">Chargement...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600 font-bold">Chargement Rand'eau Vive...</div>;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
+    <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
       {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-slate-800 text-white flex-shrink-0 no-print">
+      <aside className="w-full md:w-64 bg-gray-900 text-white flex-shrink-0 no-print">
         <div className="p-6">
-          <h1 className="text-xl font-bold tracking-wider">GESTION ASSO</h1>
-          <p className="text-xs text-slate-400 mt-1">Version Pro</p>
+          <h1 className="text-xl font-bold tracking-wider flex items-center gap-2">
+            <Tent className="text-orange-500" /> RAND'EAU VIVE
+          </h1>
+          <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest">Gestion Associative</p>
         </div>
         <nav className="mt-2 flex flex-col space-y-1 px-2">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={activeTab} set={setActiveTab} />
-          <NavBtn id="realized" icon={Wallet} label="Saisie Opérations" active={activeTab} set={setActiveTab} />
-          <NavBtn id="bank" icon={Landmark} label="Banque / Rapprochement" active={activeTab} set={setActiveTab} />
+          <NavBtn id="volunteers" icon={Users} label="Bénévoles" active={activeTab} set={setActiveTab} />
           <NavBtn id="budget" icon={PiggyBank} label="Bilan Financier" active={activeTab} set={setActiveTab} />
-          <NavBtn id="contributions" icon={HandHeart} label="Contributions Nature" active={activeTab} set={setActiveTab} />
-          <NavBtn id="sponsors" icon={Users} label="Sponsors" active={activeTab} set={setActiveTab} />
-          <NavBtn id="directory" icon={ContactIcon} label="Annuaire" active={activeTab} set={setActiveTab} />
+          <NavBtn id="realized" icon={Wallet} label="Saisie Opérations" active={activeTab} set={setActiveTab} />
+          <NavBtn id="bank" icon={Landmark} label="Banque" active={activeTab} set={setActiveTab} />
+          <NavBtn id="contributions" icon={HandHeart} label="Valorisation" active={activeTab} set={setActiveTab} />
+          <NavBtn id="sponsors" icon={ContactIcon} label="Sponsors" active={activeTab} set={setActiveTab} />
+          <NavBtn id="directory" icon={Users} label="Annuaire" active={activeTab} set={setActiveTab} />
           <NavBtn id="config" icon={Settings} label="Configuration" active={activeTab} set={setActiveTab} />
-          <NavBtn id="archives" icon={ArchiveIcon} label="Archives" active={activeTab} set={setActiveTab} />
         </nav>
         
-        <div className="p-4 mt-auto border-t border-slate-700 space-y-3">
-          <label className="flex items-center justify-center w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded cursor-pointer text-sm transition">
-            <Upload className="w-4 h-4 mr-2" /> Importer JSON
-            <input type="file" className="hidden" accept=".json" onChange={handleImportJSON} />
-          </label>
-          <button onClick={handleExportJSON} className="flex items-center justify-center w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
-            <Download className="w-4 h-4 mr-2" /> Sauvegarder JSON
+        <div className="p-4 mt-auto border-t border-gray-700 space-y-3">
+          <div className="text-xs text-center text-gray-500 mb-2">Sauvegarde Cloud Active</div>
+          <button onClick={handleExportJSON} className="flex items-center justify-center w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm transition">
+            <Download className="w-4 h-4 mr-2" /> Backup Local
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 bg-gray-50 overflow-y-auto h-screen print:h-auto print:overflow-visible">
+      <main className="flex-1 overflow-y-auto h-screen print:h-auto print:overflow-visible">
+        {/* Header with Event Selector */}
         <header className="bg-white shadow px-6 py-4 flex justify-between items-center no-print sticky top-0 z-10">
-          <h2 className="text-2xl font-semibold text-gray-800">
-            {activeTab === 'dashboard' && 'Bilan Financier & Synthèse'}
-            {activeTab === 'realized' && 'Saisie des Opérations'}
-            {activeTab === 'bank' && 'Relevé Bancaire & Rapprochement'}
-            {activeTab === 'budget' && 'Bilan Financier & Suivi'}
-            {activeTab === 'contributions' && 'Bénévolat et Dons en nature'}
-            {activeTab === 'sponsors' && 'Partenaires & Sponsors'}
-            {activeTab === 'directory' && 'Annuaire des Contacts'}
-            {activeTab === 'config' && 'Paramètres'}
-            {activeTab === 'archives' && 'Historique des Bilans'}
-          </h2>
+          <div className="flex items-center gap-4">
+             <div className="relative">
+                <select 
+                  className="bg-orange-50 border border-orange-200 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-64 p-2.5 font-bold"
+                  value={currentEventId || ''}
+                  onChange={(e) => setCurrentEventId(e.target.value)}
+                >
+                    <option value="" disabled>-- Sélectionner Édition --</option>
+                    {Object.entries(eventsList).map(([key, val]) => (
+                        <option key={key} value={key}>{val.name}</option>
+                    ))}
+                </select>
+             </div>
+             <Button size="sm" onClick={handleCreateEvent} className="bg-orange-600 hover:bg-orange-700 text-white">
+                <Plus className="w-4 h-4" />
+             </Button>
+          </div>
+
           <div className="flex space-x-2">
             <Button variant="secondary" onClick={() => window.print()}>
               <Printer className="w-4 h-4 mr-2" /> Imprimer
@@ -330,13 +281,34 @@ function App() {
         </header>
 
         <div className="p-6 print:p-0">
+          {/* Titre Impression */}
+          <div className="hidden print-only mb-6 text-center">
+             <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
+             <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name}</h2>
+          </div>
+
           {activeTab === 'dashboard' && <DashboardTab data={data} />}
           
+          {activeTab === 'volunteers' && (
+            <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
+          )}
+
+          {activeTab === 'budget' && (
+            <BudgetTab 
+              budgetLines={data.budget} 
+              transactions={data.realized}
+              year={data.budgetYear}
+              archives={data.archives}
+              onUpdate={updateBudget}
+              onYearChange={updateBudgetYear}
+            />
+          )}
+
           {activeTab === 'realized' && (
             <TransactionsTab 
               transactions={data.realized} 
               budget={data.budget}
-              events={data.events}
+              events={data.eventsList || []} 
               isProvisional={false}
               onUpdate={updateRealized}
             />
@@ -356,17 +328,6 @@ function App() {
             />
           )}
 
-          {activeTab === 'budget' && (
-            <BudgetTab 
-              budgetLines={data.budget} 
-              transactions={data.realized}
-              year={data.budgetYear}
-              archives={data.archives}
-              onUpdate={updateBudget}
-              onYearChange={updateBudgetYear}
-            />
-          )}
-
           {activeTab === 'contributions' && (
             <ContributionsTab contributions={data.contributions} onUpdate={updateContributions} />
           )}
@@ -380,22 +341,27 @@ function App() {
           )}
 
           {activeTab === 'config' && (
-            <ConfigTab data={data} onUpdateCategories={updateCategories} onUpdateEvents={updateEvents} />
+            <ConfigTab 
+              data={data} 
+              onUpdateCategories={updateCategories} 
+              onUpdateEvents={(evts) => console.log('Legacy events update', evts)} 
+            />
           )}
 
+          {/* Archives tab kept for viewing old formats if needed, but Firebase handles history via events */}
           {activeTab === 'archives' && (
             <ArchivesTab 
               archives={data.archives} 
-              onLoad={loadArchive} 
-              onDelete={deleteArchive}
-              onArchiveCurrent={archiveCurrentState}
+              onLoad={() => alert("Non disponible en mode Cloud")} 
+              onDelete={() => {}}
+              onArchiveCurrent={() => alert("Utilisez 'Créer une édition' pour archiver l'année en cours.")}
             />
           )}
         </div>
         
         {/* Footer for Print */}
         <div className="print-only p-8 mt-10 border-t text-center text-sm text-gray-500">
-          <p>Généré par Gestion Asso Pro le {new Date().toLocaleDateString()}</p>
+          <p>Généré par Rand'eau Vive App le {new Date().toLocaleDateString()}</p>
         </div>
       </main>
     </div>
@@ -406,10 +372,10 @@ const NavBtn = ({ id, icon: Icon, label, active, set }: { id: TabId, icon: any, 
   <button
     onClick={() => set(id)}
     className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors ${
-      active === id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+      active === id ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
     }`}
   >
-    <Icon className="mr-3 flex-shrink-0 h-5 w-5" />
+    <Icon className={`mr-3 flex-shrink-0 h-5 w-5 ${active === id ? 'text-white' : 'text-gray-500'}`} />
     {label}
   </button>
 );

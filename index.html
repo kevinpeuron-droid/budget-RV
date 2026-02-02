@@ -1,19 +1,22 @@
+
 <!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestion Asso Pro</title>
+    <title>Rand'eau Vive - Gestion</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+      
+      body {
+          font-family: 'Inter', sans-serif;
+      }
+
       @media print {
-        /* Masquer les éléments non imprimables */
         .no-print { display: none !important; }
-        
-        /* Afficher les éléments spécifiques à l'impression */
         .print-only { display: block !important; }
         
-        /* Réinitialisation globale pour l'impression multipage */
         html, body {
           height: auto !important;
           overflow: visible !important;
@@ -23,22 +26,18 @@
           color: black !important;
         }
 
-        /* Forcer le conteneur racine et main à s'étendre */
         #root, main {
           height: auto !important;
           overflow: visible !important;
           display: block !important;
           width: 100% !important;
-          position: relative !important;
         }
 
-        /* Forcer l'impression des couleurs d'arrière-plan et graphiques */
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
 
-        /* Gestion des sauts de page */
         .page-break { 
           page-break-before: always !important; 
           break-before: page !important;
@@ -46,20 +45,27 @@
           height: 1px;
         }
         
-        /* Éviter de couper les tableaux ou blocs en deux */
         .break-inside-avoid { 
           break-inside: avoid !important; 
-          page-break-inside: avoid !important;
         }
+
+        /* Styles spécifiques Budget demandé */
+        /* Recettes : Orange */
+        .text-green-700 { color: #c2410c !important; } /* Orange-700 */
+        .bg-green-700 { background-color: #ea580c !important; color: white !important; } /* Orange-600 Header */
         
-        /* Nettoyage visuel */
-        .shadow-sm, .shadow, .shadow-lg { 
-          box-shadow: none !important; 
-          border: 1px solid #ddd !important; /* Bordure légère pour lisibilité */
+        /* Dépenses : Gris Foncé / Noir */
+        .text-red-700 { color: #1f2937 !important; }
+        .bg-red-700 { background-color: #374151 !important; color: white !important; }
+
+        /* Valorisation : Vert (On garde vert pour distinguer ou Jaune plus clair) */
+        
+        /* Tableau headers */
+        thead tr th {
+            background-color: #fff7ed !important; /* Orange-50 */
+            color: #9a3412 !important; /* Orange-800 */
+            border-bottom: 2px solid #fdba74 !important;
         }
-        
-        /* Largeur pleine pour les tableaux */
-        table { width: 100% !important; }
       }
       
       .print-only { display: none; }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Transaction, AppData, TransactionType, TransactionStatus, BudgetLine } from '../types';
+import { Transaction, AppData, TransactionType, TransactionStatus, BudgetLine, AppEvent } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
 import { Trash2, PlusCircle, Edit, X, Clock, CheckCircle } from 'lucide-react';
@@ -7,7 +7,7 @@ import { Trash2, PlusCircle, Edit, X, Clock, CheckCircle } from 'lucide-react';
 interface TransactionsTabProps {
   transactions: Transaction[];
   budget: BudgetLine[]; // Nous utilisons le budget pour dériver les catégories
-  events: AppData['events'];
+  events: AppEvent[];
   isProvisional: boolean;
   onUpdate: (updatedTransactions: Transaction[]) => void;
 }
@@ -403,7 +403,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {t.description}
                       {evt && (
-                         <span className="ml-2 inline-block w-3 h-3 rounded-full" style={{ backgroundColor: evt.color }} title={evt.name}></span>
+                         <span className="ml-2 inline-block w-3 h-3 rounded-full" style={{ backgroundColor: evt.color || '#3B82F6' }} title={evt.name}></span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
