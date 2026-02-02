@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { AppData, Transaction } from '../types';
 import { formatCurrency } from '../utils';
@@ -13,7 +14,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
   
   const stats = useMemo(() => {
     // 1. Calcul des recettes MANUELLES (Saisie Opérations)
-    // Séparation Réalisé (Payé) vs À Venir (Engagé)
     const recettesRealized = data.realized
       .filter(t => t.type === 'RECETTE' && (t.status === undefined || t.status === 'REALIZED'))
       .reduce((acc, curr) => acc + curr.amount, 0);
@@ -23,7 +23,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       .reduce((acc, curr) => acc + curr.amount, 0);
     
     // 2. Sponsors
-    // 'Versé' va dans le réalisé, (Promis - Versé) va dans le pending s'il reste à payer
     const recettesSponsorsRealized = data.sponsors.reduce((acc, curr) => acc + (curr.amountPaid || 0), 0);
     const recettesSponsorsPending = data.sponsors.reduce((acc, curr) => acc + Math.max(0, (curr.amountPromised || 0) - (curr.amountPaid || 0)), 0);
 
@@ -50,7 +49,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
     const soldeReel = totalRecettesRealized - totalDepensesRealized;
     const soldeProjete = totalRecettesGlobal - totalDepensesGlobal;
     
-    // Préparation Pie Chart (Basé sur le réalisé + engagé pour avoir une vue d'ensemble)
+    // Préparation Pie Chart
     const recettesByCategory = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
@@ -142,7 +141,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-4 rounded-lg shadow">
           <h4 className="text-lg font-semibold mb-4 text-center">Répartition Recettes (Engagé inclus)</h4>
-          <div className="h-64">
+          <div className="h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pieDataRecettes} cx="50%" cy="50%" innerRadius={40} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
@@ -159,7 +158,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
 
         <div className="bg-white p-4 rounded-lg shadow">
           <h4 className="text-lg font-semibold mb-4 text-center">Répartition Dépenses (Engagé inclus)</h4>
-          <div className="h-64">
+          <div className="h-[350px] w-full">
              <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pieDataDepenses} cx="50%" cy="50%" innerRadius={40} outerRadius={80} fill="#82ca9d" paddingAngle={5} dataKey="value">
@@ -177,7 +176,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
 
        <div className="bg-white p-4 rounded-lg shadow">
          <h4 className="text-lg font-semibold mb-4 text-center">Balance : Réel vs À Venir</h4>
-         <div className="h-64">
+         <div className="h-[350px] w-full">
            <ResponsiveContainer width="100%" height="100%">
              <BarChart data={barData}>
                <XAxis dataKey="name" />

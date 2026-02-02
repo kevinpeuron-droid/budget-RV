@@ -15,12 +15,13 @@ import { ConfigTab } from './components/ConfigTab';
 import { ArchivesTab } from './components/ArchivesTab';
 import { DirectoryTab } from './components/DirectoryTab';
 import { BankTab } from './components/BankTab';
+import { VolunteersTab } from './components/VolunteersTab'; // Réintégration de l'import
 import { Button } from './components/ui/Button';
 import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
   Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
-  Landmark, Plus, Tent, AlertTriangle
+  Landmark, Plus, Tent, AlertTriangle, UserPlus
 } from 'lucide-react';
 
 const INITIAL_STATE: AppState = {
@@ -37,12 +38,12 @@ const INITIAL_STATE: AppState = {
   bankLines: [],
   lastPointedDate: '',
   archives: [],
-  eventsList: [] // Sera peuplé par la liste des événements
+  eventsList: [] 
 };
 
-type TabId = 'dashboard' | 'realized' | 'bank' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
+type TabId = 'dashboard' | 'realized' | 'bank' | 'budget' | 'contributions' | 'sponsors' | 'volunteers' | 'directory' | 'config' | 'archives';
 
-// Helper pour convertir les objets Firebase (qui ressemblent à des tableaux) en vrais tableaux
+// Helper pour garantir que les listes Firebase sont des tableaux
 const toArray = <T,>(obj: any): T[] => {
   if (!obj) return [];
   if (Array.isArray(obj)) return obj;
@@ -57,26 +58,21 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
 
-  // 1. Charger la liste des événements au démarrage
+  // 1. Charger la liste des événements
   useEffect(() => {
-    // Timeout de 5 secondes pour afficher une erreur si Firebase ne répond pas
     const timeoutId = setTimeout(() => {
-        if (loading) {
-            setConnectionError(true);
-        }
+        if (loading) setConnectionError(true);
     }, 5000);
 
     const eventsRef = ref(db, 'events_meta');
     const unsubscribe = onValue(eventsRef, (snapshot) => {
-      clearTimeout(timeoutId); // Connexion réussie, on annule le timeout
+      clearTimeout(timeoutId);
       setConnectionError(false);
       
       const val = snapshot.val() || {};
       setEventsList(val);
       
-      // Auto-select le premier si aucun sélectionné
       if (!currentEventId && Object.keys(val).length > 0) {
-        // Idéalement le plus récent
         const keys = Object.keys(val);
         const lastKey = keys[keys.length - 1];
         setCurrentEventId(lastKey);
@@ -94,10 +90,9 @@ function App() {
     };
   }, []);
 
-  // 2. Charger les données de l'événement sélectionné
+  // 2. Charger les données de l'événement actif
   useEffect(() => {
     if (!currentEventId) {
-      // Si aucun événement, on reset les données opérationnelles
       setData(prev => ({ ...INITIAL_STATE, contacts: prev.contacts, archives: prev.archives }));
       return;
     }
@@ -106,7 +101,6 @@ function App() {
     return onValue(eventDataRef, (snapshot) => {
       const val = snapshot.val();
       if (val) {
-        // Merge avec l'état initial pour garantir que tous les tableaux existent et sont bien des tableaux
         setData(prev => ({
           ...INITIAL_STATE,
           ...val,
@@ -123,26 +117,40 @@ function App() {
           categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
         }));
       } else {
-        // Nouvel événement vide
         setData({ ...INITIAL_STATE });
       }
     });
   }, [currentEventId]);
 
-  // --- Helpers de mise à jour Firebase ---
-  
+  // --- FONCTION DE SAUVEGARDE CENTRALISÉE ---
   const syncToFirebase = (key: keyof AppState, value: any) => {
-    if (!currentEventId) return;
-    set(ref(db, `events_data/${currentEventId}/${key}`), value);
+    if (!currentEventId) {
+        alert("Aucun événement sélectionné. Impossible de sauvegarder.");
+        return;
+    }
+    
+    // Optimistic UI update (mise à jour locale immédiate pour fluidité)
+    setData(prev => ({ ...prev, [key]: value }));
+
+    // Envoi Firebase
+    set(ref(db, `events_data/${currentEventId}/${key}`), value)
+      .then(() => {
+          console.log(`✅ Données sauvegardées : ${key}`);
+      })
+      .catch((err) => {
+          console.error("Erreur sauvegarde Firebase:", err);
+          alert("Erreur de sauvegarde ! Vérifiez votre connexion.");
+      });
   };
 
+  // Wrappers spécifiques par type de donnée
   const updateRealized = (transactions: Transaction[]) => syncToFirebase('realized', transactions);
   const updateBudget = (budgetLines: BudgetLine[]) => syncToFirebase('budget', budgetLines);
   const updateBudgetYear = (year: number) => syncToFirebase('budgetYear', year);
   const updateSponsors = (sponsors: Sponsor[]) => syncToFirebase('sponsors', sponsors);
   const updateContributions = (contributions: Contribution[]) => syncToFirebase('contributions', contributions);
   const updateContacts = (contacts: Contact[]) => syncToFirebase('contacts', contacts);
-  // const updateVolunteers = (volunteers: Volunteer[]) => syncToFirebase('volunteers', volunteers); // Désactivé
+  const updateVolunteers = (volunteers: Volunteer[]) => syncToFirebase('volunteers', volunteers);
   const updateBankLines = (lines: BankLine[]) => syncToFirebase('bankLines', lines);
   const updateLastPointedDate = (date: string) => syncToFirebase('lastPointedDate', date);
   const updateEventsList = (events: AppEvent[]) => syncToFirebase('eventsList', events);
@@ -152,7 +160,7 @@ function App() {
     else syncToFirebase('categoriesDepense', cats);
   };
 
-  // Création d'un nouvel événement
+  // Création événement
   const handleCreateEvent = () => {
     const name = prompt("Nom de la nouvelle édition (ex: Rand'eau Vive 2026) :");
     if (name) {
@@ -164,7 +172,6 @@ function App() {
         createdAt: Date.now() 
       });
       
-      // Initialiser les données par défaut
       set(ref(db, `events_data/${newId}`), {
         ...INITIAL_STATE,
         budgetYear: new Date().getFullYear()
@@ -174,18 +181,23 @@ function App() {
     }
   };
 
-  // Logic pour la Banque
+  // Logique Banque <-> Transaction
   const handleLinkTransaction = (bankId: string, transactionId: string) => {
     if (!currentEventId) return;
+    
+    const bankLine = data.bankLines.find(l => l.id === bankId);
+    
+    // Mise à jour locale + sauvegarde
     const updatedBankLines = data.bankLines.map(line => 
       line.id === bankId ? { ...line, transactionId } : line
     );
-    const bankLine = data.bankLines.find(l => l.id === bankId);
+    
     const updatedTransactions = data.realized.map(t => 
       t.id === transactionId 
       ? { ...t, status: 'REALIZED' as const, date: bankLine ? bankLine.date : t.date } 
       : t
     );
+
     updateBankLines(updatedBankLines);
     updateRealized(updatedTransactions);
   };
@@ -193,13 +205,17 @@ function App() {
   const handleUnlinkTransaction = (bankId: string) => {
     const bankLine = data.bankLines.find(l => l.id === bankId);
     if (!bankLine || !bankLine.transactionId) return;
+    
     const transactionId = bankLine.transactionId;
+    
     const updatedBankLines = data.bankLines.map(line => 
       line.id === bankId ? { ...line, transactionId: undefined } : line
     );
+    
     const updatedTransactions = data.realized.map(t => 
       t.id === transactionId ? { ...t, status: 'PENDING' as const } : t
     );
+
     updateBankLines(updatedBankLines);
     updateRealized(updatedTransactions);
   };
@@ -207,6 +223,7 @@ function App() {
   const handleCreateFromBank = (bankLineId: string, category: string, budgetLineId: string, description?: string) => {
       const bankLine = data.bankLines.find(l => l.id === bankLineId);
       if(!bankLine) return;
+
       const newTransaction: Transaction = {
           id: generateId(),
           date: bankLine.date,
@@ -218,31 +235,30 @@ function App() {
           budgetLineId: budgetLineId,
           isBenevolat: false
       };
+
       const updatedTransactions = [...data.realized, newTransaction];
       const updatedBankLines = data.bankLines.map(l => l.id === bankLineId ? { ...l, transactionId: newTransaction.id } : l);
+      
       updateRealized(updatedTransactions);
       updateBankLines(updatedBankLines);
   };
 
-  // Export CSV
+  // Exports
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    // Explicit casting to any to avoid "unknown" type error if eventsList inference is weak
-    const currentEvent = eventsList[currentEventId || ''] as any; 
+    const currentEvent = eventsList[currentEventId || ''];
     const currentName = currentEvent?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
 
-  // Les fonctions JSON sont moins pertinentes avec Firebase mais on les garde pour backup local
   const handleExportJSON = () => {
     const dataStr = JSON.stringify(data, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    // Explicit casting to any to avoid "unknown" type error if eventsList inference is weak
-    const currentEvent = eventsList[currentEventId || ''] as any;
+    const currentEvent = eventsList[currentEventId || ''];
     const currentName = currentEvent?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
@@ -250,13 +266,11 @@ function App() {
     document.body.removeChild(link);
   };
 
-  // Affichage Erreur ou Chargement
   if (connectionError) return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
           <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur de connexion</h2>
           <p className="text-gray-600 mb-4">Impossible de joindre la base de données Firebase.</p>
-          <p className="text-sm text-gray-500 bg-gray-100 p-2 rounded">Vérifiez votre connexion internet ou que l'URL Database (Europe) est correcte.</p>
           <Button className="mt-4" onClick={() => window.location.reload()}>Réessayer</Button>
       </div>
   );
@@ -265,7 +279,7 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
-      {/* Sidebar Navigation */}
+      {/* Sidebar */}
       <aside className="w-full md:w-64 bg-gray-900 text-white flex-shrink-0 no-print">
         <div className="p-6">
           <h1 className="text-xl font-bold tracking-wider flex items-center gap-2">
@@ -275,10 +289,10 @@ function App() {
         </div>
         <nav className="mt-2 flex flex-col space-y-1 px-2">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={activeTab} set={setActiveTab} />
-          {/* Onglet Bénévoles supprimé */}
           <NavBtn id="budget" icon={PiggyBank} label="Bilan Financier" active={activeTab} set={setActiveTab} />
           <NavBtn id="realized" icon={Wallet} label="Saisie Opérations" active={activeTab} set={setActiveTab} />
           <NavBtn id="bank" icon={Landmark} label="Banque" active={activeTab} set={setActiveTab} />
+          <NavBtn id="volunteers" icon={UserPlus} label="Bénévoles" active={activeTab} set={setActiveTab} />
           <NavBtn id="contributions" icon={HandHeart} label="Valorisation" active={activeTab} set={setActiveTab} />
           <NavBtn id="sponsors" icon={ContactIcon} label="Sponsors" active={activeTab} set={setActiveTab} />
           <NavBtn id="directory" icon={Users} label="Annuaire" active={activeTab} set={setActiveTab} />
@@ -295,7 +309,6 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto h-screen print:h-auto print:overflow-visible">
-        {/* Header with Event Selector */}
         <header className="bg-white shadow px-6 py-4 flex justify-between items-center no-print sticky top-0 z-10">
           <div className="flex items-center gap-4">
              <div className="relative">
@@ -326,15 +339,16 @@ function App() {
         </header>
 
         <div className="p-6 print:p-0">
-          {/* Titre Impression */}
           <div className="hidden print-only mb-6 text-center">
              <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''] as any)?.name}</h2>
+             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''])?.name}</h2>
           </div>
 
           {activeTab === 'dashboard' && <DashboardTab data={data} />}
           
-          {/* Onglet Bénévoles Rendu supprimé */}
+          {activeTab === 'volunteers' && (
+             <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
+          )}
 
           {activeTab === 'budget' && (
             <BudgetTab 
@@ -391,7 +405,6 @@ function App() {
             />
           )}
 
-          {/* Archives tab kept for viewing old formats if needed, but Firebase handles history via events */}
           {activeTab === 'archives' && (
             <ArchivesTab 
               archives={data.archives} 
@@ -402,7 +415,6 @@ function App() {
           )}
         </div>
         
-        {/* Footer for Print */}
         <div className="print-only p-8 mt-10 border-t text-center text-sm text-gray-500">
           <p>Généré par Rand'eau Vive App le {new Date().toLocaleDateString()}</p>
         </div>
