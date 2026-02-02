@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { BudgetLine, Transaction, Archive } from '../types';
 import { formatCurrency, generateId, downloadCSV } from '../utils';
@@ -183,10 +184,11 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
 
     return (
       <div className="mb-8 break-inside-avoid">
-        <div className={`flex justify-between items-end border-b-2 pb-2 mb-4 ${colorClass}`}>
-           <h3 className="text-xl font-bold uppercase">{sectionTitle}</h3>
-           <div className="text-sm font-normal opacity-70 mb-1">
-             Total N-1: {formatCurrency(totalNMinus1)} | Total N: {formatCurrency(totalN)}
+        {/* En-tête de section avec code couleur spécifique */}
+        <div className={`flex justify-between items-center p-3 rounded-t-lg mb-0 ${colorClass} text-white print:text-white`}>
+           <h3 className="text-xl font-bold uppercase tracking-wide">{sectionTitle}</h3>
+           <div className="text-sm font-medium opacity-90">
+             Total N: {formatCurrency(totalN)}
            </div>
         </div>
         
@@ -198,8 +200,8 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
             const isRenaming = editingCategory?.old === cat;
 
             return (
-                <div key={cat} className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden break-inside-avoid">
-                    <div className="bg-gray-50 px-4 py-2 font-semibold text-gray-700 flex justify-between items-center print:bg-gray-100 print:text-black">
+                <div key={cat} className="bg-white border-l border-r border-b border-gray-200 overflow-hidden break-inside-avoid">
+                    <div className="bg-orange-50 px-4 py-2 font-semibold text-gray-800 flex justify-between items-center print:bg-orange-50 print:text-gray-900 border-t border-gray-100">
                         <div className="flex items-center gap-2">
                            {isRenaming ? (
                              <div className="flex items-center gap-1">
@@ -231,19 +233,18 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                         </div>
                     </div>
                     <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50 print:bg-gray-100">
+                        <thead className="bg-gray-50 print:bg-white">
                             <tr>
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/2">Libellé</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
                                     Réalisé N-1
-                                    {previousYearArchive && <span className="ml-1 text-xs text-blue-600">(Archivé)</span>}
                                 </th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6 bg-blue-50 bg-opacity-30 print:bg-transparent">Réalisé N</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Réalisé N</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Écart</th>
                                 <th className="px-4 py-2 w-10 no-print"></th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                        <tbody className="bg-white divide-y divide-gray-100">
                             {catLines.map(line => {
                                 const realizedN = calculateRealizedN(line.id);
                                 const archivedNMinus1 = getArchivedNMinus1(line);
@@ -254,7 +255,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                                 
                                 return (
                                     <tr key={line.id} className="hover:bg-gray-50 group">
-                                        <td className="px-4 py-2 text-sm text-gray-900">
+                                        <td className="px-4 py-2 text-sm text-gray-900 border-r border-gray-50">
                                             <input 
                                                 type="text" 
                                                 className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm placeholder-gray-400"
@@ -263,7 +264,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                                                 placeholder="Libellé..."
                                             />
                                         </td>
-                                        <td className="px-4 py-2 text-sm text-right text-gray-600 relative">
+                                        <td className="px-4 py-2 text-sm text-right text-gray-600 relative border-r border-gray-50">
                                             {archivedNMinus1 !== null ? (
                                                 <div className="flex items-center justify-end gap-1 text-gray-500 font-medium bg-gray-50 px-2 py-1 rounded">
                                                     <History className="w-3 h-3 text-blue-400" />
@@ -278,7 +279,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                                                 />
                                             )}
                                         </td>
-                                        <td className="px-4 py-2 text-sm text-right font-medium text-gray-900 bg-blue-50 bg-opacity-30 print:bg-transparent cursor-default" title="Calculé automatiquement depuis la saisie réalisée">
+                                        <td className="px-4 py-2 text-sm text-right font-medium text-gray-900 bg-gray-50 print:bg-transparent border-r border-gray-50" title="Calculé automatiquement depuis la saisie réalisée">
                                             {formatCurrency(realizedN)}
                                         </td>
                                         <td className={`px-4 py-2 text-sm text-right font-medium ${gapColor}`}>
@@ -293,7 +294,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                                 )
                             })}
                             {/* Subtotal Row */}
-                            <tr className="bg-gray-100 font-semibold text-gray-800 border-t-2 border-gray-200 print:bg-gray-200">
+                            <tr className="bg-gray-100 font-semibold text-gray-800 print:bg-gray-200">
                                 <td className="px-4 py-2 text-sm text-right uppercase tracking-wider">Sous-total</td>
                                 <td className="px-4 py-2 text-sm text-right">{formatCurrency(subTotalNMinus1)}</td>
                                 <td className="px-4 py-2 text-sm text-right">{formatCurrency(subTotalN)}</td>
@@ -312,15 +313,6 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
             <Button variant="secondary" onClick={() => addNewCategory(sectionKey)} className="w-full border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700">
                 <FolderPlus className="w-5 h-5 mr-2" /> Ajouter une catégorie {sectionTitle.toLowerCase()}
             </Button>
-        </div>
-
-        {/* Section Total Footer */}
-        <div className={`p-4 rounded-lg flex justify-between items-center text-white font-bold text-lg ${colorClass.replace('text-', 'bg-').replace('700', '600')} print:text-white break-inside-avoid`}>
-            <span>TOTAL {sectionTitle}</span>
-            <div className="flex gap-8">
-                <span>N-1: {formatCurrency(totalNMinus1)}</span>
-                <span>N: {formatCurrency(totalN)}</span>
-            </div>
         </div>
       </div>
     );
@@ -381,7 +373,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
       <div className="print:w-full">
         {/* Page 1: Recettes */}
         <div className="print:min-h-screen">
-            {renderSection('RECETTES', 'RECETTE', 'text-green-700')}
+            {renderSection('RECETTES (PRODUITS)', 'RECETTE', 'bg-orange-500')}
         </div>
         
         {/* Force page break for printing */}
@@ -389,11 +381,11 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
         
         {/* Page 2: Dépenses & Résultat */}
         <div className="print:min-h-screen">
-            {renderSection('DÉPENSES', 'DEPENSE', 'text-red-700')}
+            {renderSection('DÉPENSES (CHARGES)', 'DEPENSE', 'bg-gray-700')}
             
             {/* Global Balance */}
-            <div className="bg-indigo-50 border-2 border-indigo-200 p-6 rounded-lg mb-8 break-inside-avoid print:bg-white print:border-black">
-                <h3 className="text-center text-xl font-bold text-indigo-900 uppercase mb-4">Résultat Financier (Hors Valorisation)</h3>
+            <div className="bg-white border-2 border-gray-800 p-6 rounded-lg mb-8 break-inside-avoid shadow-lg print:shadow-none print:border-black">
+                <h3 className="text-center text-xl font-bold text-gray-900 uppercase mb-4">Résultat Financier</h3>
                 <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
                         <div className="text-sm text-gray-500 uppercase tracking-wider">Résultat N-1</div>
@@ -416,7 +408,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                 </div>
             </div>
 
-            {renderSection('VALORISATION', 'VALORISATION', 'text-blue-700')}
+            {renderSection('VALORISATION', 'VALORISATION', 'bg-green-600')}
         </div>
       </div>
     </div>

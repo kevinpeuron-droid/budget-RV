@@ -21,7 +21,7 @@ import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
   Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
-  Landmark, Plus, Tent
+  Landmark, Plus, Tent, AlertTriangle
 } from 'lucide-react';
 
 const INITIAL_STATE: AppState = {
@@ -49,11 +49,22 @@ function App() {
   const [currentEventId, setCurrentEventId] = useState<string | null>(null);
   const [eventsList, setEventsList] = useState<Record<string, { name: string }>>({});
   const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
 
   // 1. Charger la liste des événements au démarrage
   useEffect(() => {
+    // Timeout de 5 secondes pour afficher une erreur si Firebase ne répond pas
+    const timeoutId = setTimeout(() => {
+        if (loading) {
+            setConnectionError(true);
+        }
+    }, 5000);
+
     const eventsRef = ref(db, 'events_meta');
-    return onValue(eventsRef, (snapshot) => {
+    const unsubscribe = onValue(eventsRef, (snapshot) => {
+      clearTimeout(timeoutId); // Connexion réussie, on annule le timeout
+      setConnectionError(false);
+      
       const val = snapshot.val() || {};
       setEventsList(val);
       
@@ -65,7 +76,16 @@ function App() {
         setCurrentEventId(lastKey);
       }
       setLoading(false);
+    }, (error) => {
+        console.error("Firebase Error:", error);
+        setConnectionError(true);
+        setLoading(false);
     });
+
+    return () => {
+        clearTimeout(timeoutId);
+        unsubscribe();
+    };
   }, []);
 
   // 2. Charger les données de l'événement sélectionné
@@ -200,7 +220,8 @@ function App() {
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    downloadCSV(csvContent, `transactions_${eventsList[currentEventId || '']?.name || 'export'}.csv`);
+    const currentName = (eventsList[currentEventId || ''] as { name: string } | undefined)?.name;
+    downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
 
   // Les fonctions JSON sont moins pertinentes avec Firebase mais on les garde pour backup local
@@ -210,13 +231,25 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_${eventsList[currentEventId || '']?.name || 'data'}.json`;
+    const currentName = (eventsList[currentEventId || ''] as { name: string } | undefined)?.name;
+    link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600 font-bold">Chargement Rand'eau Vive...</div>;
+  // Affichage Erreur ou Chargement
+  if (connectionError) return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
+          <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Erreur de connexion</h2>
+          <p className="text-gray-600 mb-4">Impossible de joindre la base de données Firebase.</p>
+          <p className="text-sm text-gray-500 bg-gray-100 p-2 rounded">Vérifiez votre connexion internet ou que l'URL Database (Europe) est correcte.</p>
+          <Button className="mt-4" onClick={() => window.location.reload()}>Réessayer</Button>
+      </div>
+  );
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600 font-bold animate-pulse">Chargement Rand'eau Vive...</div>;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
@@ -284,7 +317,7 @@ function App() {
           {/* Titre Impression */}
           <div className="hidden print-only mb-6 text-center">
              <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-             <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name}</h2>
+             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''] as { name: string } | undefined)?.name}</h2>
           </div>
 
           {activeTab === 'dashboard' && <DashboardTab data={data} />}

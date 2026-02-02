@@ -112,30 +112,44 @@ export interface AppState extends AppData {
 }
 
 export const DEFAULT_CATEGORIES_RECETTE = [
-  'Inscriptions', 'Aides Publiques', 'Partenaires', 'Ventes', 'Divers'
+  'Participation des délégations', 'Aides publiques', 'Partenaires', 'Ventes'
 ];
 
 export const DEFAULT_CATEGORIES_DEPENSE = [
-  'Logistique', 'Animation', 'Sécurité', 'Communication', 'Achats Divers'
+  'Logistique', 'Animation', 'Sécurité', 'Communication'
 ];
 
 export const DEFAULT_BUDGET_LINES: BudgetLine[] = [
   // RECETTES (Produits)
-  { id: 'inc1', section: 'RECETTE', category: 'Inscriptions', label: 'Inscriptions Participants', amountNMinus1: 0, amountN: 0 },
-  { id: 'inc2', section: 'RECETTE', category: 'Aides Publiques', label: 'Subventions Mairie', amountNMinus1: 0, amountN: 0 },
-  { id: 'inc3', section: 'RECETTE', category: 'Aides Publiques', label: 'Subventions Département', amountNMinus1: 0, amountN: 0 },
-  { id: 'inc4', section: 'RECETTE', category: 'Partenaires', label: 'Sponsors Privés', amountNMinus1: 0, amountN: 0 },
-  { id: 'inc5', section: 'RECETTE', category: 'Ventes', label: 'Buvette & Restauration', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc1', section: 'RECETTE', category: 'Participation des délégations', label: 'Inscriptions', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc2', section: 'RECETTE', category: 'Participation des délégations', label: 'Hébergement & Restauration', amountNMinus1: 0, amountN: 0 },
+  
+  { id: 'inc3', section: 'RECETTE', category: 'Aides publiques', label: 'Subvention Mairie', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc4', section: 'RECETTE', category: 'Aides publiques', label: 'Subvention Département/Région', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc5', section: 'RECETTE', category: 'Aides publiques', label: 'CNDS / ANS', amountNMinus1: 0, amountN: 0 },
+
+  { id: 'inc6', section: 'RECETTE', category: 'Partenaires', label: 'Sponsors Privés', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc7', section: 'RECETTE', category: 'Partenaires', label: 'Mécénat', amountNMinus1: 0, amountN: 0 },
+
+  { id: 'inc8', section: 'RECETTE', category: 'Ventes', label: 'Buvette', amountNMinus1: 0, amountN: 0 },
+  { id: 'inc9', section: 'RECETTE', category: 'Ventes', label: 'Boutique / Merchandising', amountNMinus1: 0, amountN: 0 },
 
   // DEPENSES (Charges)
-  { id: 'exp1', section: 'DEPENSE', category: 'Logistique', label: 'Location Matériel', amountNMinus1: 0, amountN: 0 },
-  { id: 'exp2', section: 'DEPENSE', category: 'Logistique', label: 'Ravitaillement', amountNMinus1: 0, amountN: 0 },
-  { id: 'exp3', section: 'DEPENSE', category: 'Animation', label: 'Récompenses & Trophées', amountNMinus1: 0, amountN: 0 },
-  { id: 'exp4', section: 'DEPENSE', category: 'Sécurité', label: 'Secouristes', amountNMinus1: 0, amountN: 0 },
-  { id: 'exp5', section: 'DEPENSE', category: 'Communication', label: 'Flyers & Affiches', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp1', section: 'DEPENSE', category: 'Logistique', label: 'Location Matériel & Tentes', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp2', section: 'DEPENSE', category: 'Logistique', label: 'Fluides (Eau/Elec) & Sanitaires', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp3', section: 'DEPENSE', category: 'Logistique', label: 'Alimentation / Ravitaillement', amountNMinus1: 0, amountN: 0 },
+
+  { id: 'exp4', section: 'DEPENSE', category: 'Animation', label: 'Sonorisation / Speaker', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp5', section: 'DEPENSE', category: 'Animation', label: 'Trophées & Récompenses', amountNMinus1: 0, amountN: 0 },
+
+  { id: 'exp6', section: 'DEPENSE', category: 'Sécurité', label: 'Dispositif Secours (Croix Rouge...)', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp7', section: 'DEPENSE', category: 'Sécurité', label: 'Signalétique & Sécurité parcours', amountNMinus1: 0, amountN: 0 },
+
+  { id: 'exp8', section: 'DEPENSE', category: 'Communication', label: 'Supports (Affiches, Flyers)', amountNMinus1: 0, amountN: 0 },
+  { id: 'exp9', section: 'DEPENSE', category: 'Communication', label: 'Publicité & Presse', amountNMinus1: 0, amountN: 0 },
 
   // VALORISATION
   { id: 'val1', section: 'VALORISATION', category: 'Bénévolat', label: 'Heures Bénévoles', amountNMinus1: 0, amountN: 0 },
-  { id: 'val2', section: 'VALORISATION', category: 'Matériel', label: 'Prêt de Matériel', amountNMinus1: 0, amountN: 0 },
+  { id: 'val2', section: 'VALORISATION', category: 'Matériel', label: 'Prêt de Véhicules/Matériel', amountNMinus1: 0, amountN: 0 },
   { id: 'val3', section: 'VALORISATION', category: 'Locaux', label: 'Mise à dispo Salles', amountNMinus1: 0, amountN: 0 },
 ];

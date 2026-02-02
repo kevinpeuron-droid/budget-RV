@@ -5,6 +5,7 @@ import { getDatabase, ref, set, push, onValue, remove, update } from "https://ww
 const firebaseConfig = {
   apiKey: "AIzaSyDK8ZDfmRGN2WoO6k-b8pXwvsVnkawlaF8",
   authDomain: "rand-eau-vive.firebaseapp.com",
+  databaseURL: "https://rand-eau-vive-default-rtdb.europe-west1.firebasedatabase.app", // CRITIQUE pour la zone Europe
   projectId: "rand-eau-vive",
   storageBucket: "rand-eau-vive.firebasestorage.app",
   messagingSenderId: "210616765974",
