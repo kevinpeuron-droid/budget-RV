@@ -11,7 +11,6 @@ import { TransactionsTab } from './components/TransactionsTab';
 import { BudgetTab } from './components/BudgetTab';
 import { SponsorsTab } from './components/SponsorsTab';
 import { ContributionsTab } from './components/ContributionsTab';
-import { VolunteersTab } from './components/VolunteersTab';
 import { ConfigTab } from './components/ConfigTab';
 import { ArchivesTab } from './components/ArchivesTab';
 import { DirectoryTab } from './components/DirectoryTab';
@@ -41,7 +40,7 @@ const INITIAL_STATE: AppState = {
   eventsList: [] // Sera peuplé par la liste des événements
 };
 
-type TabId = 'dashboard' | 'realized' | 'bank' | 'budget' | 'volunteers' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
+type TabId = 'dashboard' | 'realized' | 'bank' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -112,6 +111,7 @@ function App() {
           contacts: val.contacts || [], // Annuaire peut être global ou par event, ici par event pour simplicité
           bankLines: val.bankLines || [],
           contributions: val.contributions || [],
+          eventsList: val.eventsList || [],
           categoriesRecette: val.categoriesRecette || DEFAULT_CATEGORIES_RECETTE,
           categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
         }));
@@ -135,10 +135,11 @@ function App() {
   const updateSponsors = (sponsors: Sponsor[]) => syncToFirebase('sponsors', sponsors);
   const updateContributions = (contributions: Contribution[]) => syncToFirebase('contributions', contributions);
   const updateContacts = (contacts: Contact[]) => syncToFirebase('contacts', contacts);
-  const updateVolunteers = (volunteers: Volunteer[]) => syncToFirebase('volunteers', volunteers);
+  // const updateVolunteers = (volunteers: Volunteer[]) => syncToFirebase('volunteers', volunteers); // Désactivé
   const updateBankLines = (lines: BankLine[]) => syncToFirebase('bankLines', lines);
   const updateLastPointedDate = (date: string) => syncToFirebase('lastPointedDate', date);
-  
+  const updateEventsList = (events: AppEvent[]) => syncToFirebase('eventsList', events);
+
   const updateCategories = (type: 'RECETTE' | 'DEPENSE', cats: string[]) => {
     if (type === 'RECETTE') syncToFirebase('categoriesRecette', cats);
     else syncToFirebase('categoriesDepense', cats);
@@ -220,7 +221,8 @@ function App() {
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    const currentName = (eventsList[currentEventId || ''] as { name: string } | undefined)?.name;
+    const currentEvent = eventsList[currentEventId || ''];
+    const currentName = currentEvent?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
 
@@ -231,7 +233,8 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const currentName = (eventsList[currentEventId || ''] as { name: string } | undefined)?.name;
+    const currentEvent = eventsList[currentEventId || ''];
+    const currentName = currentEvent?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
     link.click();
@@ -263,7 +266,7 @@ function App() {
         </div>
         <nav className="mt-2 flex flex-col space-y-1 px-2">
           <NavBtn id="dashboard" icon={LayoutDashboard} label="Tableau de Bord" active={activeTab} set={setActiveTab} />
-          <NavBtn id="volunteers" icon={Users} label="Bénévoles" active={activeTab} set={setActiveTab} />
+          {/* Onglet Bénévoles supprimé */}
           <NavBtn id="budget" icon={PiggyBank} label="Bilan Financier" active={activeTab} set={setActiveTab} />
           <NavBtn id="realized" icon={Wallet} label="Saisie Opérations" active={activeTab} set={setActiveTab} />
           <NavBtn id="bank" icon={Landmark} label="Banque" active={activeTab} set={setActiveTab} />
@@ -317,14 +320,12 @@ function App() {
           {/* Titre Impression */}
           <div className="hidden print-only mb-6 text-center">
              <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''] as { name: string } | undefined)?.name}</h2>
+             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''] as any)?.name}</h2>
           </div>
 
           {activeTab === 'dashboard' && <DashboardTab data={data} />}
           
-          {activeTab === 'volunteers' && (
-            <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
-          )}
+          {/* Onglet Bénévoles Rendu supprimé */}
 
           {activeTab === 'budget' && (
             <BudgetTab 
@@ -377,7 +378,7 @@ function App() {
             <ConfigTab 
               data={data} 
               onUpdateCategories={updateCategories} 
-              onUpdateEvents={(evts) => console.log('Legacy events update', evts)} 
+              onUpdateEvents={updateEventsList} 
             />
           )}
 

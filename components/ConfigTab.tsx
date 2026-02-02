@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { AppData, AppEvent } from '../types';
+import { AppState, AppEvent } from '../types';
 import { generateId } from '../utils';
 import { Button } from './ui/Button';
 import { Trash2, Plus, Edit, X } from 'lucide-react';
 
 interface ConfigTabProps {
-  data: AppData;
+  data: AppState;
   onUpdateCategories: (type: 'RECETTE' | 'DEPENSE', cats: string[]) => void;
   onUpdateEvents: (events: AppEvent[]) => void;
 }
@@ -16,17 +16,22 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [newEvent, setNewEvent] = useState<Partial<AppEvent>>({ name: '', date: '', color: '#3B82F6' });
 
+  // Safe access to lists
+  const eventsList = data.eventsList || [];
+  const categoriesRecette = data.categoriesRecette || [];
+  const categoriesDepense = data.categoriesDepense || [];
+
   const addCategory = (type: 'RECETTE' | 'DEPENSE') => {
     const val = type === 'RECETTE' ? newCatRecette : newCatDepense;
     if (!val) return;
-    const current = type === 'RECETTE' ? data.categoriesRecette : data.categoriesDepense;
+    const current = type === 'RECETTE' ? categoriesRecette : categoriesDepense;
     onUpdateCategories(type, [...current, val]);
     if (type === 'RECETTE') setNewCatRecette(''); else setNewCatDepense('');
   };
 
   const removeCategory = (type: 'RECETTE' | 'DEPENSE', name: string) => {
     if (window.confirm(`Supprimer la catégorie ${name} ?`)) {
-      const current = type === 'RECETTE' ? data.categoriesRecette : data.categoriesDepense;
+      const current = type === 'RECETTE' ? categoriesRecette : categoriesDepense;
       onUpdateCategories(type, current.filter(c => c !== name));
     }
   };
@@ -36,7 +41,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
 
     if (editingEventId) {
       // Edit mode
-      const updatedEvents = data.events.map(e => 
+      const updatedEvents = eventsList.map(e => 
         e.id === editingEventId 
         ? { ...e, name: newEvent.name!, date: newEvent.date || '', color: newEvent.color || '#3B82F6' }
         : e
@@ -47,11 +52,11 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
       // Create mode
       const evt: AppEvent = {
         id: generateId(),
-        name: newEvent.name,
+        name: newEvent.name!,
         date: newEvent.date || '',
         color: newEvent.color || '#3B82F6'
       };
-      onUpdateEvents([...data.events, evt]);
+      onUpdateEvents([...eventsList, evt]);
       setNewEvent({ name: '', date: '', color: '#3B82F6' });
     }
   };
@@ -68,7 +73,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
 
   const removeEvent = (id: string) => {
     if (window.confirm('Supprimer cet événement ?')) {
-      onUpdateEvents(data.events.filter(e => e.id !== id));
+      onUpdateEvents(eventsList.filter(e => e.id !== id));
       if (editingEventId === id) cancelEventEdit();
     }
   };
@@ -86,7 +91,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
           <Button size="sm" onClick={() => addCategory('RECETTE')}><Plus className="w-4 h-4" /></Button>
         </div>
         <ul className="space-y-2">
-          {data.categoriesRecette.map(cat => (
+          {categoriesRecette.map(cat => (
             <li key={cat} className="flex justify-between items-center bg-gray-50 p-2 rounded">
               <span>{cat}</span>
               <button onClick={() => removeCategory('RECETTE', cat)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
@@ -106,7 +111,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
           <Button size="sm" onClick={() => addCategory('DEPENSE')}><Plus className="w-4 h-4" /></Button>
         </div>
         <ul className="space-y-2">
-          {data.categoriesDepense.map(cat => (
+          {categoriesDepense.map(cat => (
             <li key={cat} className="flex justify-between items-center bg-gray-50 p-2 rounded">
               <span>{cat}</span>
               <button onClick={() => removeCategory('DEPENSE', cat)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
@@ -117,7 +122,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
 
       {/* Events */}
       <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="font-bold text-lg mb-4 text-blue-700">Événements</h3>
+        <h3 className="font-bold text-lg mb-4 text-blue-700">Événements (Tags)</h3>
+        <p className="text-xs text-gray-500 mb-4">Créez des sous-événements pour étiqueter vos opérations (ex: Loto, Tournoi).</p>
         <div className="space-y-2 mb-4 p-4 border rounded bg-gray-50">
           <input 
             className="w-full border border-gray-300 rounded px-2 py-1"
@@ -139,7 +145,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({ data, onUpdateCategories, 
           </div>
         </div>
         <ul className="space-y-2">
-          {data.events.map(evt => (
+          {eventsList.map(evt => (
             <li key={evt.id} className={`flex justify-between items-center border p-2 rounded ${editingEventId === evt.id ? 'bg-blue-50' : 'bg-white'}`}>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full" style={{backgroundColor: evt.color}}></span>
