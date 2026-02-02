@@ -4,7 +4,7 @@ import {
   AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine, BankLine, Volunteer,
   DEFAULT_CATEGORIES_RECETTE, DEFAULT_CATEGORIES_DEPENSE, DEFAULT_BUDGET_LINES 
 } from './types';
-import { db, ref, set, push, onValue } from './firebase';
+import { db, ref, set, push, onValue, remove } from './firebase';
 
 import { DashboardTab } from './components/DashboardTab';
 import { TransactionsTab } from './components/TransactionsTab';
@@ -21,7 +21,7 @@ import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
   Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
-  Landmark, Plus, Tent, AlertTriangle, UserPlus
+  Landmark, Plus, Tent, AlertTriangle, UserPlus, Edit2, Trash2
 } from 'lucide-react';
 
 const INITIAL_STATE: AppState = {
@@ -73,9 +73,13 @@ function App() {
       setEventsList(val);
       
       if (!currentEventId && Object.keys(val).length > 0) {
-        const keys = Object.keys(val);
-        const lastKey = keys[keys.length - 1];
-        setCurrentEventId(lastKey);
+        // Sélectionner le dernier événement par défaut si aucun n'est sélectionné
+        // sauf si on vient de supprimer (géré ailleurs)
+        if (currentEventId === null) { 
+             const keys = Object.keys(val);
+             const lastKey = keys[keys.length - 1];
+             setCurrentEventId(lastKey);
+        }
       }
       setLoading(false);
     }, (error) => {
@@ -160,6 +164,8 @@ function App() {
     else syncToFirebase('categoriesDepense', cats);
   };
 
+  // --- GESTION DES ÉDITIONS ---
+
   // Création événement
   const handleCreateEvent = () => {
     const name = prompt("Nom de la nouvelle édition (ex: Rand'eau Vive 2026) :");
@@ -179,6 +185,70 @@ function App() {
       
       setCurrentEventId(newId);
     }
+  };
+
+  // Renommer l'événement courant
+  const handleRenameEvent = () => {
+    if (!currentEventId) return;
+    const currentName = eventsList[currentEventId]?.name;
+    const newName = prompt("Nouveau nom pour cette édition :", currentName);
+    if (newName && newName !== currentName) {
+      set(ref(db, `events_meta/${currentEventId}/name`), newName);
+    }
+  };
+
+  // Supprimer l'événement courant
+  const handleDeleteEvent = () => {
+    if (!currentEventId) return;
+    if (confirm("ATTENTION : Vous allez supprimer DÉFINITIVEMENT cette édition et toutes ses données (budget, sponsors, opérations...). Cette action est irréversible.\n\nÊtes-vous sûr ?")) {
+      const idToDelete = currentEventId;
+      // On désélectionne d'abord pour éviter des écritures fantômes
+      setCurrentEventId(null); 
+      
+      remove(ref(db, `events_meta/${idToDelete}`));
+      remove(ref(db, `events_data/${idToDelete}`));
+      
+      // La sélection automatique du prochain événement sera gérée par le useEffect
+    }
+  };
+
+  // Importer un Backup JSON
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!currentEventId) {
+        alert("Veuillez d'abord créer ou sélectionner une édition pour y importer les données.");
+        e.target.value = '';
+        return;
+    }
+
+    if (!confirm("ATTENTION : L'importation va ÉCRASER toutes les données de l'édition actuelle avec celles du fichier.\n\nContinuer ?")) {
+        e.target.value = '';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const json = JSON.parse(event.target?.result as string);
+            
+            // Validation sommaire
+            if (!json.budget && !json.realized) {
+               throw new Error("Format JSON invalide ou inconnu.");
+            }
+
+            // Restauration dans Firebase
+            set(ref(db, `events_data/${currentEventId}`), json)
+                .then(() => alert("✅ Backup restauré avec succès !"))
+                .catch(err => alert("Erreur lors de la restauration : " + err));
+
+        } catch (err) {
+            alert("Erreur de lecture du fichier JSON : " + err);
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset pour permettre de réimporter le même fichier
   };
 
   // Logique Banque <-> Transaction
@@ -247,7 +317,7 @@ function App() {
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    const currentEvent = eventsList[currentEventId || ''];
+    const currentEvent = (eventsList as any)[currentEventId || ''];
     const currentName = currentEvent?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
@@ -258,7 +328,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const currentEvent = eventsList[currentEventId || ''];
+    const currentEvent = (eventsList as any)[currentEventId || ''];
     const currentName = currentEvent?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
@@ -300,10 +370,16 @@ function App() {
         </nav>
         
         <div className="p-4 mt-auto border-t border-gray-700 space-y-3">
-          <div className="text-xs text-center text-gray-500 mb-2">Sauvegarde Cloud Active</div>
+          <div className="text-xs text-center text-gray-500 mb-1">Sauvegarde & Restauration</div>
+          
           <button onClick={handleExportJSON} className="flex items-center justify-center w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm transition">
             <Download className="w-4 h-4 mr-2" /> Backup Local
           </button>
+
+          <label className="flex items-center justify-center w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition cursor-pointer text-gray-200">
+             <Upload className="w-4 h-4 mr-2" /> Restaurer Backup
+             <input type="file" className="hidden" accept=".json" onChange={handleImportJSON} />
+          </label>
         </div>
       </aside>
 
@@ -323,7 +399,20 @@ function App() {
                     ))}
                 </select>
              </div>
-             <Button size="sm" onClick={handleCreateEvent} className="bg-orange-600 hover:bg-orange-700 text-white">
+             
+             {/* Boutons d'édition de l'événement courant */}
+             {currentEventId && (
+                <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={handleRenameEvent} title="Renommer l'édition" className="text-gray-500 hover:text-blue-600">
+                        <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={handleDeleteEvent} title="Supprimer l'édition" className="text-gray-500 hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                    </Button>
+                </div>
+             )}
+
+             <Button size="sm" onClick={handleCreateEvent} className="bg-orange-600 hover:bg-orange-700 text-white ml-2" title="Créer une nouvelle édition">
                 <Plus className="w-4 h-4" />
              </Button>
           </div>
@@ -341,7 +430,7 @@ function App() {
         <div className="p-6 print:p-0">
           <div className="hidden print-only mb-6 text-center">
              <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''])?.name}</h2>
+             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''] as { name: string } | undefined)?.name}</h2>
           </div>
 
           {activeTab === 'dashboard' && <DashboardTab data={data} />}

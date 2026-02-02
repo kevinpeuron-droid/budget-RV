@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BudgetLine, Transaction, Archive } from '../types';
 import { formatCurrency, generateId, downloadCSV } from '../utils';
 import { Button } from './ui/Button';
@@ -9,15 +9,98 @@ interface BudgetTabProps {
   budgetLines: BudgetLine[];
   transactions: Transaction[];
   year: number;
-  archives: Archive[]; // New prop for archives
+  archives: Archive[];
   onUpdate: (lines: BudgetLine[]) => void;
   onYearChange: (year: number) => void;
 }
 
+interface BudgetRowProps {
+    line: BudgetLine;
+    realizedN: number;
+    archivedNMinus1: number | null;
+    onDelete: (id: string) => void;
+    onUpdateLine: (id: string, field: 'label' | 'amountNMinus1', value: any) => void;
+}
+
+// Sous-composant pour isoler l'état de saisie d'une ligne
+// Cela évite que tout le tableau se rafraîchisse à chaque lettre tapée
+const BudgetRow: React.FC<BudgetRowProps> = ({ line, realizedN, archivedNMinus1, onDelete, onUpdateLine }) => {
+    // État local pour fluidifier la saisie sans re-rendu global
+    const [label, setLabel] = useState(line.label);
+    const [amountStr, setAmountStr] = useState(line.amountNMinus1.toString());
+
+    // On ne met à jour le local que si la prop change vraiment (ex: chargement initial ou modif externe)
+    useEffect(() => {
+        setLabel(line.label);
+    }, [line.label]);
+
+    useEffect(() => {
+        setAmountStr(line.amountNMinus1.toString());
+    }, [line.amountNMinus1]);
+
+    const handleBlurLabel = () => {
+        if (label !== line.label) {
+            onUpdateLine(line.id, 'label', label);
+        }
+    };
+
+    const handleBlurAmount = () => {
+        const val = parseFloat(amountStr) || 0;
+        if (val !== line.amountNMinus1) {
+            onUpdateLine(line.id, 'amountNMinus1', val);
+        }
+    };
+
+    const finalNMinus1 = archivedNMinus1 ?? (parseFloat(amountStr) || 0);
+    const gap = realizedN - finalNMinus1;
+    const gapColor = gap > 0 ? 'text-green-600' : (gap < 0 ? 'text-red-600' : 'text-gray-400');
+
+    return (
+        <tr className="hover:bg-gray-50 group">
+            <td className="px-4 py-2 text-sm text-gray-900 border-r border-gray-50">
+                <input 
+                    type="text" 
+                    className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm placeholder-gray-400 focus:bg-white focus:shadow-sm rounded px-2"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    onBlur={handleBlurLabel}
+                    placeholder="Libellé..."
+                />
+            </td>
+            <td className="px-4 py-2 text-sm text-right text-gray-600 relative border-r border-gray-50">
+                {archivedNMinus1 !== null ? (
+                    <div className="flex items-center justify-end gap-1 text-gray-500 font-medium bg-gray-50 px-2 py-1 rounded">
+                        <History className="w-3 h-3 text-blue-400" />
+                        {formatCurrency(archivedNMinus1)}
+                    </div>
+                ) : (
+                    <input 
+                        type="number" step="0.01"
+                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-right text-sm focus:bg-white focus:shadow-sm rounded px-2"
+                        value={amountStr}
+                        onChange={(e) => setAmountStr(e.target.value)}
+                        onBlur={handleBlurAmount}
+                    />
+                )}
+            </td>
+            <td className="px-4 py-2 text-sm text-right font-medium text-gray-900 bg-gray-50 print:bg-transparent border-r border-gray-50" title="Calculé automatiquement depuis la saisie réalisée">
+                {formatCurrency(realizedN)}
+            </td>
+            <td className={`px-4 py-2 text-sm text-right font-medium ${gapColor}`}>
+                {gap > 0 ? '+' : ''}{formatCurrency(gap)}
+            </td>
+            <td className="px-4 py-2 text-right no-print">
+                <button onClick={() => onDelete(line.id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            </td>
+        </tr>
+    );
+};
+
 export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions, year, archives, onUpdate, onYearChange }) => {
   const [editingCategory, setEditingCategory] = useState<{old: string, new: string} | null>(null);
 
-  // Helper to find archive for N-1
   const previousYearArchive = archives.find(a => a.data.budgetYear === year - 1);
 
   const handleValueChange = (id: string, field: 'amountNMinus1' | 'label', value: any) => {
@@ -33,27 +116,18 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
       .reduce((acc, t) => acc + t.amount, 0);
   };
 
-  // Logic to fetch N-1 amount from archive if available
   const getArchivedNMinus1 = (line: BudgetLine) => {
       if (!previousYearArchive) return null;
-      
-      // Find matching line in archive (Match by Category AND Label because IDs are random generated)
       const archivedLine = previousYearArchive.data.budget.find(
           l => l.category === line.category && l.label === line.label && l.section === line.section
       );
-
       if (!archivedLine) return null;
-
-      // Calculate realized amount for that line in the archive
-      // We look at realized transactions in the archive that matched that line ID
       const realizedInArchive = previousYearArchive.data.realized
           .filter(t => t.budgetLineId === archivedLine.id && (t.status === 'REALIZED' || !t.status))
           .reduce((acc, t) => acc + t.amount, 0);
-      
       return realizedInArchive;
   };
 
-  // EXPORT CSV: Bilan N (Section;Categorie;Libelle;RealiseN)
   const handleExportBudgetCSV = () => {
     const header = ['Section', 'Categorie', 'Libelle', 'RealiseN'];
     const rows = budgetLines.map(line => {
@@ -65,7 +139,6 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
     downloadCSV(csvContent, `bilan_financier_${year}.csv`);
   };
 
-  // IMPORT CSV: Importer en N-1 (Lit le CSV et remplit amountNMinus1)
   const handleImportNMinus1CSV = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -77,19 +150,15 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
           let updatedBudgetLines = [...budgetLines];
           let matchCount = 0;
 
-          // Skip header
           for(let i = 1; i < lines.length; i++) {
               const row = lines[i].trim();
               if(!row) continue;
-              
-              // Parse CSV Line: "Section";"Category";"Label";"Amount"
               const cols = row.split(';').map(c => c.replace(/^"|"$/g, ''));
               if(cols.length < 4) continue;
 
               const [section, category, label, amountStr] = cols;
               const amount = parseFloat(amountStr);
 
-              // Find matching budget line in current year
               const matchIndex = updatedBudgetLines.findIndex(l => 
                   l.section === section && 
                   l.category === category && 
@@ -97,7 +166,6 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
               );
 
               if (matchIndex !== -1) {
-                  // Update N-1 Amount
                   updatedBudgetLines[matchIndex] = {
                       ...updatedBudgetLines[matchIndex],
                       amountNMinus1: amount
@@ -114,11 +182,9 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
           }
       };
       reader.readAsText(file);
-      e.target.value = ''; // Reset
+      e.target.value = '';
   };
 
-
-  // Add a new line (Libellé) to an existing category
   const addLineToCategory = (section: 'RECETTE' | 'DEPENSE' | 'VALORISATION', category: string) => {
     const newLine: BudgetLine = {
       id: generateId(),
@@ -131,7 +197,6 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
     onUpdate([...budgetLines, newLine]);
   };
 
-  // Add a completely new Category group
   const addNewCategory = (section: 'RECETTE' | 'DEPENSE' | 'VALORISATION') => {
     const name = prompt("Nom de la nouvelle catégorie :");
     if (name) {
@@ -178,13 +243,11 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
     const sectionLines = budgetLines.filter(l => l.section === sectionKey);
     const categories: string[] = Array.from(new Set(sectionLines.map(l => l.category)));
     
-    // Totaux globaux de la section
     const totalNMinus1 = sectionLines.reduce((acc, l) => acc + (getArchivedNMinus1(l) ?? l.amountNMinus1), 0);
     const totalN = sectionLines.reduce((acc, l) => acc + calculateRealizedN(l.id), 0);
 
     return (
       <div className="mb-8 break-inside-avoid">
-        {/* En-tête de section avec code couleur spécifique */}
         <div className={`flex justify-between items-center p-3 rounded-t-lg mb-0 ${colorClass} text-white print:text-white`}>
            <h3 className="text-xl font-bold uppercase tracking-wide">{sectionTitle}</h3>
            <div className="text-sm font-medium opacity-90">
@@ -248,52 +311,17 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                             {catLines.map(line => {
                                 const realizedN = calculateRealizedN(line.id);
                                 const archivedNMinus1 = getArchivedNMinus1(line);
-                                const finalNMinus1 = archivedNMinus1 ?? line.amountNMinus1;
-                                
-                                const gap = realizedN - finalNMinus1;
-                                const gapColor = gap > 0 ? 'text-green-600' : (gap < 0 ? 'text-red-600' : 'text-gray-400');
-                                
                                 return (
-                                    <tr key={line.id} className="hover:bg-gray-50 group">
-                                        <td className="px-4 py-2 text-sm text-gray-900 border-r border-gray-50">
-                                            <input 
-                                                type="text" 
-                                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm placeholder-gray-400"
-                                                value={line.label}
-                                                onChange={(e) => handleValueChange(line.id, 'label', e.target.value)}
-                                                placeholder="Libellé..."
-                                            />
-                                        </td>
-                                        <td className="px-4 py-2 text-sm text-right text-gray-600 relative border-r border-gray-50">
-                                            {archivedNMinus1 !== null ? (
-                                                <div className="flex items-center justify-end gap-1 text-gray-500 font-medium bg-gray-50 px-2 py-1 rounded">
-                                                    <History className="w-3 h-3 text-blue-400" />
-                                                    {formatCurrency(archivedNMinus1)}
-                                                </div>
-                                            ) : (
-                                                <input 
-                                                    type="number" step="0.01"
-                                                    className="w-full bg-transparent border-none focus:ring-0 p-0 text-right text-sm"
-                                                    value={line.amountNMinus1}
-                                                    onChange={(e) => handleValueChange(line.id, 'amountNMinus1', parseFloat(e.target.value) || 0)}
-                                                />
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-2 text-sm text-right font-medium text-gray-900 bg-gray-50 print:bg-transparent border-r border-gray-50" title="Calculé automatiquement depuis la saisie réalisée">
-                                            {formatCurrency(realizedN)}
-                                        </td>
-                                        <td className={`px-4 py-2 text-sm text-right font-medium ${gapColor}`}>
-                                            {gap > 0 ? '+' : ''}{formatCurrency(gap)}
-                                        </td>
-                                        <td className="px-4 py-2 text-right no-print">
-                                            <button onClick={() => deleteLine(line.id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
+                                    <BudgetRow 
+                                        key={line.id}
+                                        line={line}
+                                        realizedN={realizedN}
+                                        archivedNMinus1={archivedNMinus1}
+                                        onDelete={deleteLine}
+                                        onUpdateLine={handleValueChange}
+                                    />
                                 )
                             })}
-                            {/* Subtotal Row */}
                             <tr className="bg-gray-100 font-semibold text-gray-800 print:bg-gray-200">
                                 <td className="px-4 py-2 text-sm text-right uppercase tracking-wider">Sous-total</td>
                                 <td className="px-4 py-2 text-sm text-right">{formatCurrency(subTotalNMinus1)}</td>
@@ -322,12 +350,10 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
       return lines.reduce((acc, l) => acc + calculateRealizedN(l.id), 0);
   };
   
-  // Calculate Global N-1 (either manually or from archives)
   const calculateGlobalNMinus1 = (lines: BudgetLine[]) => {
       return lines.reduce((acc, l) => acc + (getArchivedNMinus1(l) ?? l.amountNMinus1), 0);
   }
 
-  // Calculs globaux
   const recLines = budgetLines.filter(l => l.section === 'RECETTE');
   const depLines = budgetLines.filter(l => l.section === 'DEPENSE');
 
@@ -336,7 +362,6 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
 
   return (
     <div className="space-y-8">
-      {/* Header Controls */}
       <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow no-print">
         <div>
            <div className="flex items-center gap-2">
@@ -364,26 +389,20 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
         </div>
       </div>
 
-      {/* Header Print Only */}
       <div className="print-only mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-900">Bilan Financier {year}</h1>
       </div>
 
-      {/* Main Budget Content */}
       <div className="print:w-full">
-        {/* Page 1: Recettes */}
         <div className="print:min-h-screen">
             {renderSection('RECETTES (PRODUITS)', 'RECETTE', 'bg-orange-500')}
         </div>
         
-        {/* Force page break for printing */}
         <div className="page-break"></div>
         
-        {/* Page 2: Dépenses & Résultat */}
         <div className="print:min-h-screen">
             {renderSection('DÉPENSES (CHARGES)', 'DEPENSE', 'bg-gray-700')}
             
-            {/* Global Balance */}
             <div className="bg-white border-2 border-gray-800 p-6 rounded-lg mb-8 break-inside-avoid shadow-lg print:shadow-none print:border-black">
                 <h3 className="text-center text-xl font-bold text-gray-900 uppercase mb-4">Résultat Financier</h3>
                 <div className="grid grid-cols-3 gap-4 text-center">
