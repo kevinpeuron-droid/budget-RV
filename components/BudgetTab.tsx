@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { BudgetLine, Transaction, Archive } from '../types';
-import { formatCurrency, generateId } from '../utils';
+import { formatCurrency, generateId, downloadCSV } from '../utils';
 import { Button } from './ui/Button';
-import { Printer, Plus, Trash2, Edit2, Check, X, FolderPlus, History } from 'lucide-react';
+import { Printer, Plus, Trash2, Edit2, Check, X, FolderPlus, History, Download, Upload } from 'lucide-react';
 
 interface BudgetTabProps {
   budgetLines: BudgetLine[];
@@ -51,6 +51,71 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
       
       return realizedInArchive;
   };
+
+  // EXPORT CSV: Bilan N (Section;Categorie;Libelle;RealiseN)
+  const handleExportBudgetCSV = () => {
+    const header = ['Section', 'Categorie', 'Libelle', 'RealiseN'];
+    const rows = budgetLines.map(line => {
+      const realized = calculateRealizedN(line.id);
+      return `"${line.section}";"${line.category}";"${line.label}";"${realized}"`;
+    });
+    
+    const csvContent = [header.join(';'), ...rows].join('\n');
+    downloadCSV(csvContent, `bilan_financier_${year}.csv`);
+  };
+
+  // IMPORT CSV: Importer en N-1 (Lit le CSV et remplit amountNMinus1)
+  const handleImportNMinus1CSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const text = event.target?.result as string;
+          const lines = text.split('\n');
+          let updatedBudgetLines = [...budgetLines];
+          let matchCount = 0;
+
+          // Skip header
+          for(let i = 1; i < lines.length; i++) {
+              const row = lines[i].trim();
+              if(!row) continue;
+              
+              // Parse CSV Line: "Section";"Category";"Label";"Amount"
+              const cols = row.split(';').map(c => c.replace(/^"|"$/g, ''));
+              if(cols.length < 4) continue;
+
+              const [section, category, label, amountStr] = cols;
+              const amount = parseFloat(amountStr);
+
+              // Find matching budget line in current year
+              const matchIndex = updatedBudgetLines.findIndex(l => 
+                  l.section === section && 
+                  l.category === category && 
+                  l.label === label
+              );
+
+              if (matchIndex !== -1) {
+                  // Update N-1 Amount
+                  updatedBudgetLines[matchIndex] = {
+                      ...updatedBudgetLines[matchIndex],
+                      amountNMinus1: amount
+                  };
+                  matchCount++;
+              }
+          }
+
+          if (matchCount > 0) {
+              onUpdate(updatedBudgetLines);
+              alert(`${matchCount} lignes mises à jour avec les données N-1 importées.`);
+          } else {
+              alert("Aucune correspondance trouvée entre le fichier CSV et le budget actuel. Vérifiez que les catégories et libellés sont identiques.");
+          }
+      };
+      reader.readAsText(file);
+      e.target.value = ''; // Reset
+  };
+
 
   // Add a new line (Libellé) to an existing category
   const addLineToCategory = (section: 'RECETTE' | 'DEPENSE' | 'VALORISATION', category: string) => {
@@ -291,11 +356,20 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                 className="text-2xl font-bold text-gray-800 w-24 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center"
              />
            </div>
-           <p className="text-sm text-gray-500">Comparatif N (Calculé depuis Saisie) vs N-1 {previousYearArchive ? "(Calculé depuis Archives)" : "(Saisi manuellement)"}</p>
+           <p className="text-sm text-gray-500">Comparatif N (Calculé depuis Saisie) vs N-1 {previousYearArchive ? "(Calculé depuis Archives)" : "(Saisi manuellement ou Importé)"}</p>
         </div>
-        <Button onClick={() => window.print()} variant="secondary">
-          <Printer className="w-4 h-4 mr-2" /> Imprimer / PDF
-        </Button>
+        <div className="flex gap-2">
+            <Button onClick={handleExportBudgetCSV} variant="ghost" size="sm" title="Exporter le réalisé de l'année en cours (N) au format CSV pour l'utiliser l'année prochaine">
+                <Download className="w-4 h-4 mr-2" /> Exporter Réalisé N (CSV)
+            </Button>
+            <label className="flex items-center px-3 py-2 bg-white border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+                <Upload className="w-4 h-4 mr-2" /> Importer en N-1 (CSV)
+                <input type="file" className="hidden" accept=".csv, .txt" onChange={handleImportNMinus1CSV} />
+            </label>
+            <Button onClick={() => window.print()} variant="secondary" size="sm">
+                <Printer className="w-4 h-4 mr-2" /> Imprimer
+            </Button>
+        </div>
       </div>
 
       {/* Header Print Only */}

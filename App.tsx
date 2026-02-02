@@ -22,6 +22,12 @@ import {
 
 const STORAGE_KEY = 'gestion_asso_data';
 
+const INITIAL_EVENTS: AppEvent[] = [
+  { id: 'evt1', name: 'Trail des Lucioles', date: '', color: '#10B981' }, // Green
+  { id: 'evt2', name: "Rand'eau Vive", date: '', color: '#3B82F6' }, // Blue
+  { id: 'evt3', name: 'Commun', date: '', color: '#6B7280' }, // Gray
+];
+
 const INITIAL_STATE: AppState = {
   realized: [],
   provisional: [],
@@ -32,7 +38,7 @@ const INITIAL_STATE: AppState = {
   budgetYear: new Date().getFullYear(),
   categoriesRecette: DEFAULT_CATEGORIES_RECETTE,
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
-  events: [],
+  events: INITIAL_EVENTS,
   archives: [],
   bankLines: [], // New bank lines state
   lastPointedDate: '' // Initialisation vide
@@ -59,6 +65,8 @@ function App() {
         if (!parsed.budgetYear) parsed.budgetYear = new Date().getFullYear();
         // Ensure bankLines exists
         if (!parsed.bankLines) parsed.bankLines = [];
+        // Ensure events exist if they were empty in previous save
+        if (!parsed.events || parsed.events.length === 0) parsed.events = INITIAL_EVENTS;
         
         setData(parsed);
       } catch (e) {
@@ -224,6 +232,7 @@ function App() {
       ...s,
       lastYearTotal: s.amountPaid, // On sauvegarde ce qui a été payé cette année
       amountPaid: 0,               // On remet le compteur à zéro pour la nouvelle année
+      datePaid: undefined,         // Reset de la date de paiement
       amountPromised: 0,           // On remet la promesse à zéro
       status: 'Prospect' as const  // On remet le statut à 'Prospect' pour relancer le démarchage
     }));

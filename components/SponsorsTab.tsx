@@ -25,6 +25,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) 
         phone: '',
         amountPromised: 0,
         amountPaid: 0,
+        datePaid: '',
         dateSent: '',
         dateReminder: '',
         notes: '',
@@ -144,7 +145,10 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) 
                     {formatCurrency(sponsor.amountPromised)}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">
-                    {formatCurrency(sponsor.amountPaid)}
+                    <div>{formatCurrency(sponsor.amountPaid)}</div>
+                    {sponsor.datePaid && (
+                         <div className="text-xs text-gray-400 font-normal">le {new Date(sponsor.datePaid).toLocaleDateString()}</div>
+                    )}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
@@ -282,14 +286,25 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) 
                         </div>
                       </div>
                       {/* Le montant versé reste caché sauf si nécessaire, ou on l'affiche pour permettre la validation des encaissements */}
-                      <div>
-                         <label className="block text-xs font-medium text-gray-500">Montant réellement encaissé (pour bilan financier)</label>
-                         <input
-                            type="number" step="0.01"
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
-                            value={currentSponsor.amountPaid || 0}
-                            onChange={e => setCurrentSponsor({...currentSponsor, amountPaid: parseFloat(e.target.value)})}
-                          />
+                      <div className="grid grid-cols-2 gap-3">
+                          <div>
+                             <label className="block text-xs font-medium text-gray-500">Montant réellement encaissé</label>
+                             <input
+                                type="number" step="0.01"
+                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                value={currentSponsor.amountPaid || 0}
+                                onChange={e => setCurrentSponsor({...currentSponsor, amountPaid: parseFloat(e.target.value)})}
+                              />
+                          </div>
+                          <div>
+                             <label className="block text-xs font-medium text-gray-500">Date de versement</label>
+                             <input
+                                type="date"
+                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                value={currentSponsor.datePaid || ''}
+                                onChange={e => setCurrentSponsor({...currentSponsor, datePaid: e.target.value})}
+                              />
+                          </div>
                       </div>
                     </div>
 

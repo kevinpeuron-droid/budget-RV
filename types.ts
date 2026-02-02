@@ -43,6 +43,7 @@ export interface Sponsor {
   phone?: string;
   amountPromised: number;
   amountPaid: number;
+  datePaid?: string; // Date du versement réel
   dateSent?: string;
   dateReminder?: string;
   notes?: string;
