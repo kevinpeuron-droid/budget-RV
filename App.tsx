@@ -228,8 +228,9 @@ function App() {
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    const currentEvent = eventsList[currentEventId || ''];
-    const currentName = (currentEvent as { name?: string } | undefined)?.name;
+    // Explicit casting to any to avoid "unknown" type error if eventsList inference is weak
+    const currentEvent = eventsList[currentEventId || ''] as any; 
+    const currentName = currentEvent?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
 
@@ -240,8 +241,9 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const currentEvent = eventsList[currentEventId || ''];
-    const currentName = (currentEvent as { name?: string } | undefined)?.name;
+    // Explicit casting to any to avoid "unknown" type error if eventsList inference is weak
+    const currentEvent = eventsList[currentEventId || ''] as any;
+    const currentName = currentEvent?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
     link.click();
