@@ -42,6 +42,13 @@ const INITIAL_STATE: AppState = {
 
 type TabId = 'dashboard' | 'realized' | 'bank' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives';
 
+// Helper pour convertir les objets Firebase (qui ressemblent à des tableaux) en vrais tableaux
+const toArray = <T,>(obj: any): T[] => {
+  if (!obj) return [];
+  if (Array.isArray(obj)) return obj;
+  return Object.values(obj);
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [data, setData] = useState<AppState>(INITIAL_STATE);
@@ -99,19 +106,19 @@ function App() {
     return onValue(eventDataRef, (snapshot) => {
       const val = snapshot.val();
       if (val) {
-        // Merge avec l'état initial pour garantir que tous les tableaux existent
+        // Merge avec l'état initial pour garantir que tous les tableaux existent et sont bien des tableaux
         setData(prev => ({
           ...INITIAL_STATE,
           ...val,
-          // S'assurer que les tableaux ne sont pas undefined
-          realized: val.realized || [],
-          budget: val.budget || DEFAULT_BUDGET_LINES,
-          volunteers: val.volunteers || [],
-          sponsors: val.sponsors || [],
-          contacts: val.contacts || [], // Annuaire peut être global ou par event, ici par event pour simplicité
-          bankLines: val.bankLines || [],
-          contributions: val.contributions || [],
-          eventsList: val.eventsList || [],
+          realized: toArray(val.realized),
+          budget: val.budget ? toArray(val.budget) : DEFAULT_BUDGET_LINES,
+          volunteers: toArray(val.volunteers),
+          sponsors: toArray(val.sponsors),
+          contacts: toArray(val.contacts),
+          bankLines: toArray(val.bankLines),
+          contributions: toArray(val.contributions),
+          eventsList: toArray(val.eventsList),
+          archives: toArray(val.archives),
           categoriesRecette: val.categoriesRecette || DEFAULT_CATEGORIES_RECETTE,
           categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
         }));
@@ -222,7 +229,7 @@ function App() {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
     const currentEvent = eventsList[currentEventId || ''];
-    const currentName = currentEvent?.name;
+    const currentName = (currentEvent as { name?: string } | undefined)?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
 
@@ -234,7 +241,7 @@ function App() {
     const link = document.createElement('a');
     link.href = url;
     const currentEvent = eventsList[currentEventId || ''];
-    const currentName = currentEvent?.name;
+    const currentName = (currentEvent as { name?: string } | undefined)?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
     link.click();
