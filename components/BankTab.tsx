@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { BankLine, Transaction, BudgetLine } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload } from 'lucide-react';
+import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload, Calendar } from 'lucide-react';
 
 interface BankTabProps {
   bankLines: BankLine[];
   transactions: Transaction[];
   budget: BudgetLine[];
+  lastPointedDate?: string; // Nouvelle prop
   onUpdateBankLines: (lines: BankLine[]) => void;
+  onUpdateLastPointedDate: (date: string) => void; // Nouvelle prop
   onLinkTransaction: (bankId: string, transactionId: string) => void;
   onUnlinkTransaction: (bankId: string) => void;
   onCreateFromBank: (bankId: string, category: string, budgetLineId: string, description: string) => void;
@@ -18,7 +20,9 @@ export const BankTab: React.FC<BankTabProps> = ({
   bankLines, 
   transactions, 
   budget,
+  lastPointedDate,
   onUpdateBankLines,
+  onUpdateLastPointedDate,
   onLinkTransaction,
   onUnlinkTransaction,
   onCreateFromBank
@@ -49,37 +53,54 @@ export const BankTab: React.FC<BankTabProps> = ({
   const processCSVContent = (content: string) => {
     const lines = content.split('\n');
     const newLines: BankLine[] = [];
+    let skippedCount = 0;
     
     lines.forEach(line => {
       if(!line.trim()) return;
       const parts = line.split(/;|\t/); // split by semicolon or tab
-      // Try to detect format
-      if (parts.length >= 3) {
-         let date = parts[0].trim();
+      
+      // Structure demandée:
+      // Col A (Index 0): Date
+      // Col B (Index 1): Libellé
+      // Col C (Index 2): Débit
+      // Col D (Index 3): Crédit
+
+      if (parts.length >= 2) {
+         let dateStr = parts[0].trim();
+         let formattedDate = dateStr;
+
          // Try to normalize date to YYYY-MM-DD if in DD/MM/YYYY
-         if(date.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-            const [d, m, y] = date.split('/');
-            date = `${y}-${m}-${d}`;
+         if(dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+            const [d, m, y] = dateStr.split('/');
+            formattedDate = `${y}-${m}-${d}`;
+         }
+
+         // Filtre anti-doublon basé sur la date de dernier pointage
+         if (lastPointedDate && formattedDate <= lastPointedDate) {
+             skippedCount++;
+             return; // On ignore cette ligne car elle est déjà pointée
          }
 
          const desc = parts[1].trim();
          let amount = 0;
 
-         if (parts.length === 4) {
-             // Date;Desc;Debit;Credit
-             const debit = parseFloat(parts[2].replace(',', '.') || '0');
-             const credit = parseFloat(parts[3].replace(',', '.') || '0');
-             amount = credit - debit;
-         } else {
-             // Date;Desc;Amount
-             const normalizedAmount = parts[2].replace(',', '.').replace(/[^\d.-]/g, '');
-             amount = parseFloat(normalizedAmount || '0');
-         }
+         // Gestion Débit (Col C) et Crédit (Col D)
+         // On nettoie les valeurs (remplace virgule par point, supprime symboles monétaires)
+         const debitStr = parts[2] ? parts[2].replace(',', '.').replace(/[^\d.-]/g, '') : '0';
+         const creditStr = parts[3] ? parts[3].replace(',', '.').replace(/[^\d.-]/g, '') : '0';
+
+         const debit = parseFloat(debitStr) || 0;
+         const credit = parseFloat(creditStr) || 0;
+
+         // Le montant est Crédit - Débit (Débit est souvent positif dans le CSV mais négatif comptablement)
+         // Si la colonne Débit contient déjà un signe négatif, il faut gérer le cas, mais généralement en CSV bancaire c'est positif.
+         // On assume ici que les colonnes C et D contiennent des valeurs absolues.
+         amount = credit - Math.abs(debit);
 
          if(!isNaN(amount)) {
              newLines.push({
                  id: generateId(),
-                 date,
+                 date: formattedDate,
                  description: desc,
                  amount
              });
@@ -91,8 +112,15 @@ export const BankTab: React.FC<BankTabProps> = ({
         onUpdateBankLines([...bankLines, ...newLines]);
         setImportText('');
         setShowImport(false);
+        if (skippedCount > 0) {
+            alert(`${newLines.length} lignes importées. ${skippedCount} lignes ignorées car antérieures ou égales à la date de dernier pointage.`);
+        }
     } else {
-        alert("Aucune ligne valide trouvée. Vérifiez le format (Date;Libellé;Montant).");
+        if (skippedCount > 0) {
+            alert(`Aucune nouvelle ligne importée. ${skippedCount} lignes ont été ignorées car elles sont déjà pointées.`);
+        } else {
+            alert("Aucune ligne valide trouvée. Vérifiez le format (Col A: Date, B: Libellé, C: Débit, D: Crédit).");
+        }
     }
   };
 
@@ -173,10 +201,27 @@ export const BankTab: React.FC<BankTabProps> = ({
 
         {/* Import */}
         <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="font-bold text-gray-700 mb-3">Import CSV / Copier-Coller</h3>
+            <div className="flex justify-between items-start mb-3">
+                 <h3 className="font-bold text-gray-700">Import CSV / Copier-Coller</h3>
+            </div>
+            
+            {/* Last Pointed Date Configuration */}
+            <div className="mb-4 bg-blue-50 p-3 rounded border border-blue-100">
+                <label className="block text-xs font-semibold text-blue-800 mb-1 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> Date du dernier pointage (exclure opérations avant/le)
+                </label>
+                <input 
+                    type="date" 
+                    className="border p-1 rounded text-sm w-full" 
+                    value={lastPointedDate || ''}
+                    onChange={(e) => onUpdateLastPointedDate(e.target.value)}
+                />
+                <p className="text-xs text-blue-600 mt-1">Les opérations antérieures à cette date seront ignorées lors de l'import.</p>
+            </div>
+
             {!showImport ? (
                 <div className="flex flex-col gap-2">
-                    <p className="text-sm text-gray-500">Format: Date ; Libellé ; Débit ; Crédit</p>
+                    <p className="text-sm text-gray-500">Format: Col A: Date | Col B: Libellé | Col C: Débit | Col D: Crédit</p>
                     <Button variant="secondary" onClick={() => setShowImport(true)}>
                         <Download className="w-4 h-4 mr-2" /> Ouvrir l'outil d'import
                     </Button>

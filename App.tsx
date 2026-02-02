@@ -34,7 +34,8 @@ const INITIAL_STATE: AppState = {
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
   events: [],
   archives: [],
-  bankLines: [] // New bank lines state
+  bankLines: [], // New bank lines state
+  lastPointedDate: '' // Initialisation vide
 };
 
 type TabId = 'dashboard' | 'realized' | 'budget' | 'contributions' | 'sponsors' | 'directory' | 'config' | 'archives' | 'bank';
@@ -88,6 +89,7 @@ function App() {
     else setData(prev => ({ ...prev, categoriesDepense: cats }));
   };
   const updateBankLines = (lines: BankLine[]) => setData(prev => ({ ...prev, bankLines: lines }));
+  const updateLastPointedDate = (date: string) => setData(prev => ({ ...prev, lastPointedDate: date }));
 
   // NEW: Link a bank line to a transaction
   const handleLinkTransaction = (bankId: string, transactionId: string) => {
@@ -336,7 +338,9 @@ function App() {
               bankLines={data.bankLines || []}
               transactions={data.realized}
               budget={data.budget}
+              lastPointedDate={data.lastPointedDate}
               onUpdateBankLines={updateBankLines}
+              onUpdateLastPointedDate={updateLastPointedDate}
               onLinkTransaction={handleLinkTransaction}
               onUnlinkTransaction={handleUnlinkTransaction}
               onCreateFromBank={handleCreateFromBank}

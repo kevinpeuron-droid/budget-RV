@@ -95,6 +95,7 @@ export interface AppData {
   categoriesDepense: string[];
   events: AppEvent[];
   bankLines: BankLine[]; // Nouveau champ pour le relevé bancaire
+  lastPointedDate?: string; // Date de la dernière opération importée/pointée pour éviter les doublons
 }
 
 export interface AppState extends AppData {
