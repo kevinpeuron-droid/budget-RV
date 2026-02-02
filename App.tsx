@@ -14,13 +14,14 @@ import { ConfigTab } from './components/ConfigTab';
 import { ArchivesTab } from './components/ArchivesTab';
 import { DirectoryTab } from './components/DirectoryTab';
 import { BankTab } from './components/BankTab';
-import { VolunteersTab } from './components/VolunteersTab'; // Réintégration de l'import
+import { VolunteersTab } from './components/VolunteersTab';
 import { Button } from './components/ui/Button';
 import { downloadCSV, convertToCSV, generateId } from './utils';
 import { 
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
   Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
-  Landmark, Plus, Tent, AlertTriangle, UserPlus, Edit2, Trash2
+  Landmark, Plus, Tent, AlertTriangle, UserPlus, Edit2, Trash2,
+  Cloud, CheckCircle, Loader2
 } from 'lucide-react';
 
 const INITIAL_STATE: AppState = {
@@ -56,12 +57,13 @@ function App() {
   const [eventsList, setEventsList] = useState<Record<string, { name: string }>>({});
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  // 1. Charger la liste des événements
+  // 1. Charger la liste des événements et gérer l'initialisation
   useEffect(() => {
     const timeoutId = setTimeout(() => {
         if (loading) setConnectionError(true);
-    }, 5000);
+    }, 8000); // Augmenté à 8s pour laisser le temps
 
     const eventsRef = ref(db, 'events_meta');
     const unsubscribe = onValue(eventsRef, (snapshot) => {
@@ -70,15 +72,28 @@ function App() {
       
       const val = snapshot.val() || {};
       setEventsList(val);
+      const keys = Object.keys(val);
       
-      if (!currentEventId && Object.keys(val).length > 0) {
-        // Sélectionner le dernier événement par défaut si aucun n'est sélectionné
-        // sauf si on vient de supprimer (géré ailleurs)
-        if (currentEventId === null) { 
-             const keys = Object.keys(val);
-             const lastKey = keys[keys.length - 1];
-             setCurrentEventId(lastKey);
-        }
+      if (keys.length === 0) {
+          // AUCUN ÉVÉNEMENT : On en crée un par défaut pour que l'app soit utilisable tout de suite
+          const defaultName = `Édition ${new Date().getFullYear()}`;
+          const newRef = push(ref(db, 'events_meta'));
+          const newId = newRef.key as string;
+          
+          // 1. Meta
+          set(newRef, { id: newId, name: defaultName, createdAt: Date.now() });
+          
+          // 2. Data initiale
+          set(ref(db, `events_data/${newId}`), {
+            ...INITIAL_STATE,
+            budgetYear: new Date().getFullYear()
+          });
+
+          setCurrentEventId(newId);
+      } else if (!currentEventId) {
+          // Sélectionner le dernier événement par défaut si aucun n'est sélectionné
+          const lastKey = keys[keys.length - 1];
+          setCurrentEventId(lastKey);
       }
       setLoading(false);
     }, (error) => {
@@ -91,7 +106,7 @@ function App() {
         clearTimeout(timeoutId);
         unsubscribe();
     };
-  }, []);
+  }, []); // Pas de dépendance currentEventId ici pour éviter boucle infinie
 
   // 2. Charger les données de l'événement actif
   useEffect(() => {
@@ -100,6 +115,7 @@ function App() {
       return;
     }
 
+    setLoading(true);
     const eventDataRef = ref(db, `events_data/${currentEventId}`);
     return onValue(eventDataRef, (snapshot) => {
       const val = snapshot.val();
@@ -120,8 +136,10 @@ function App() {
           categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
         }));
       } else {
+        // Cas rare : Meta existe mais pas Data (suppression manuelle ?)
         setData({ ...INITIAL_STATE });
       }
+      setLoading(false);
     });
   }, [currentEventId]);
 
@@ -134,14 +152,18 @@ function App() {
     
     // Optimistic UI update (mise à jour locale immédiate pour fluidité)
     setData(prev => ({ ...prev, [key]: value }));
+    setSaveStatus('saving');
 
     // Envoi Firebase
     set(ref(db, `events_data/${currentEventId}/${key}`), value)
       .then(() => {
-          console.log(`✅ Données sauvegardées : ${key}`);
+          setSaveStatus('saved');
+          // Remettre à 'idle' après 2 secondes
+          setTimeout(() => setSaveStatus('idle'), 2000);
       })
       .catch((err) => {
           console.error("Erreur sauvegarde Firebase:", err);
+          setSaveStatus('error');
           alert("Erreur de sauvegarde ! Vérifiez votre connexion.");
       });
   };
@@ -230,7 +252,7 @@ function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
         try {
-            const json = JSON.parse(event.target?.result as string);
+            const json = JSON.parse(event.target?.result as string) as any;
             
             // Validation sommaire
             if (!json.budget && !json.realized) {
@@ -238,9 +260,16 @@ function App() {
             }
 
             // Restauration dans Firebase
+            setSaveStatus('saving');
             set(ref(db, `events_data/${currentEventId}`), json)
-                .then(() => alert("✅ Backup restauré avec succès !"))
-                .catch(err => alert("Erreur lors de la restauration : " + err));
+                .then(() => {
+                    setSaveStatus('saved');
+                    alert("✅ Backup restauré avec succès !");
+                })
+                .catch(err => {
+                    setSaveStatus('error');
+                    alert("Erreur lors de la restauration : " + err);
+                });
 
         } catch (err) {
             alert("Erreur de lecture du fichier JSON : " + err);
@@ -316,7 +345,7 @@ function App() {
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    const currentEvent = eventsList[currentEventId || ''];
+    const currentEvent = currentEventId ? eventsList[currentEventId] : undefined;
     const currentName = currentEvent?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
@@ -327,7 +356,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const currentEvent = eventsList[currentEventId || ''];
+    const currentEvent = currentEventId ? eventsList[currentEventId] : undefined;
     const currentName = currentEvent?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
@@ -343,8 +372,6 @@ function App() {
           <Button className="mt-4" onClick={() => window.location.reload()}>Réessayer</Button>
       </div>
   );
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-orange-600 font-bold animate-pulse">Chargement Rand'eau Vive...</div>;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
@@ -394,7 +421,7 @@ function App() {
                 >
                     <option value="" disabled>-- Sélectionner Édition --</option>
                     {Object.entries(eventsList).map(([key, val]) => (
-                        <option key={key} value={key}>{val.name}</option>
+                        <option key={key} value={(val as any)?.name}>{(val as any)?.name}</option>
                     ))}
                 </select>
              </div>
@@ -416,7 +443,23 @@ function App() {
              </Button>
           </div>
 
-          <div className="flex space-x-2">
+          <div className="flex items-center space-x-4">
+            {/* Status Indicator */}
+            <div className="hidden md:flex items-center text-sm">
+                {saveStatus === 'saving' && (
+                    <span className="text-blue-600 flex items-center"><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Enregistrement...</span>
+                )}
+                {saveStatus === 'saved' && (
+                    <span className="text-green-600 flex items-center"><CheckCircle className="w-4 h-4 mr-1" /> Sauvegardé</span>
+                )}
+                {saveStatus === 'error' && (
+                    <span className="text-red-600 flex items-center"><AlertTriangle className="w-4 h-4 mr-1" /> Erreur Sauvegarde</span>
+                )}
+                {saveStatus === 'idle' && (
+                     <span className="text-gray-400 flex items-center" title="Tout est à jour"><Cloud className="w-4 h-4 mr-1" /> Prêt</span>
+                )}
+            </div>
+
             <Button variant="secondary" onClick={() => window.print()}>
               <Printer className="w-4 h-4 mr-2" /> Imprimer
             </Button>
@@ -427,79 +470,90 @@ function App() {
         </header>
 
         <div className="p-6 print:p-0">
-          <div className="hidden print-only mb-6 text-center">
-             <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-             <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name}</h2>
-          </div>
+          {loading ? (
+             <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <Loader2 className="w-8 h-8 text-orange-600 animate-spin mx-auto mb-2" />
+                    <p className="text-gray-500">Chargement des données...</p>
+                </div>
+             </div>
+          ) : (
+             <>
+                <div className="hidden print-only mb-6 text-center">
+                   <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
+                   <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name}</h2>
+                </div>
 
-          {activeTab === 'dashboard' && <DashboardTab data={data} />}
-          
-          {activeTab === 'volunteers' && (
-             <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
-          )}
+                {activeTab === 'dashboard' && <DashboardTab data={data} />}
+                
+                {activeTab === 'volunteers' && (
+                   <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
+                )}
 
-          {activeTab === 'budget' && (
-            <BudgetTab 
-              budgetLines={data.budget} 
-              transactions={data.realized}
-              year={data.budgetYear}
-              archives={data.archives}
-              onUpdate={updateBudget}
-              onYearChange={updateBudgetYear}
-            />
-          )}
+                {activeTab === 'budget' && (
+                  <BudgetTab 
+                    budgetLines={data.budget} 
+                    transactions={data.realized}
+                    year={data.budgetYear}
+                    archives={data.archives}
+                    onUpdate={updateBudget}
+                    onYearChange={updateBudgetYear}
+                  />
+                )}
 
-          {activeTab === 'realized' && (
-            <TransactionsTab 
-              transactions={data.realized} 
-              budget={data.budget}
-              events={data.eventsList || []} 
-              isProvisional={false}
-              onUpdate={updateRealized}
-            />
-          )}
+                {activeTab === 'realized' && (
+                  <TransactionsTab 
+                    transactions={data.realized} 
+                    budget={data.budget}
+                    events={data.eventsList || []} 
+                    isProvisional={false}
+                    onUpdate={updateRealized}
+                  />
+                )}
 
-          {activeTab === 'bank' && (
-            <BankTab
-              bankLines={data.bankLines || []}
-              transactions={data.realized}
-              budget={data.budget}
-              lastPointedDate={data.lastPointedDate}
-              onUpdateBankLines={updateBankLines}
-              onUpdateLastPointedDate={updateLastPointedDate}
-              onLinkTransaction={handleLinkTransaction}
-              onUnlinkTransaction={handleUnlinkTransaction}
-              onCreateFromBank={handleCreateFromBank}
-            />
-          )}
+                {activeTab === 'bank' && (
+                  <BankTab
+                    bankLines={data.bankLines || []}
+                    transactions={data.realized}
+                    budget={data.budget}
+                    lastPointedDate={data.lastPointedDate}
+                    onUpdateBankLines={updateBankLines}
+                    onUpdateLastPointedDate={updateLastPointedDate}
+                    onLinkTransaction={handleLinkTransaction}
+                    onUnlinkTransaction={handleUnlinkTransaction}
+                    onCreateFromBank={handleCreateFromBank}
+                  />
+                )}
 
-          {activeTab === 'contributions' && (
-            <ContributionsTab contributions={data.contributions} onUpdate={updateContributions} />
-          )}
+                {activeTab === 'contributions' && (
+                  <ContributionsTab contributions={data.contributions} onUpdate={updateContributions} />
+                )}
 
-          {activeTab === 'sponsors' && (
-             <SponsorsTab sponsors={data.sponsors} onUpdate={updateSponsors} />
-          )}
+                {activeTab === 'sponsors' && (
+                   <SponsorsTab sponsors={data.sponsors} onUpdate={updateSponsors} />
+                )}
 
-          {activeTab === 'directory' && (
-             <DirectoryTab contacts={data.contacts || []} onUpdate={updateContacts} />
-          )}
+                {activeTab === 'directory' && (
+                   <DirectoryTab contacts={data.contacts || []} onUpdate={updateContacts} />
+                )}
 
-          {activeTab === 'config' && (
-            <ConfigTab 
-              data={data} 
-              onUpdateCategories={updateCategories} 
-              onUpdateEvents={updateEventsList} 
-            />
-          )}
+                {activeTab === 'config' && (
+                  <ConfigTab 
+                    data={data} 
+                    onUpdateCategories={updateCategories} 
+                    onUpdateEvents={updateEventsList} 
+                  />
+                )}
 
-          {activeTab === 'archives' && (
-            <ArchivesTab 
-              archives={data.archives} 
-              onLoad={() => alert("Non disponible en mode Cloud")} 
-              onDelete={() => {}}
-              onArchiveCurrent={() => alert("Utilisez 'Créer une édition' pour archiver l'année en cours.")}
-            />
+                {activeTab === 'archives' && (
+                  <ArchivesTab 
+                    archives={data.archives} 
+                    onLoad={() => alert("Non disponible en mode Cloud")} 
+                    onDelete={() => {}}
+                    onArchiveCurrent={() => alert("Utilisez 'Créer une édition' pour archiver l'année en cours.")}
+                  />
+                )}
+             </>
           )}
         </div>
         
