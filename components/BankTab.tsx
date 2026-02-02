@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BankLine, Transaction, BudgetLine } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload, Calendar } from 'lucide-react';
+import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload, Calendar, Eraser } from 'lucide-react';
 
 interface BankTabProps {
   bankLines: BankLine[];
@@ -150,6 +150,23 @@ export const BankTab: React.FC<BankTabProps> = ({
       }
   };
 
+  const handleClearAll = () => {
+      if (window.confirm("Attention: Vous allez supprimer TOUTES les lignes du relevé bancaire. Cette action est irréversible. Continuer ?")) {
+          onUpdateBankLines([]);
+      }
+  };
+
+  const handleClearLinked = () => {
+      const count = bankLines.filter(l => l.transactionId).length;
+      if (count === 0) {
+          alert("Aucune ligne pointée à supprimer.");
+          return;
+      }
+      if (window.confirm(`Supprimer les ${count} lignes déjà pointées (liées à une opération) ?`)) {
+          onUpdateBankLines(bankLines.filter(l => !l.transactionId));
+      }
+  };
+
   // Filter transactions for linking: Not already linked to another bank line, and ideally matching amount
   const getLinkableTransactions = (bankLine: BankLine) => {
       // Find transactions that are NOT linked to ANY OTHER bank line
@@ -265,10 +282,20 @@ export const BankTab: React.FC<BankTabProps> = ({
 
       {/* Main Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-             <h3 className="font-bold text-gray-700">Relevé de Compte ({bankLines.length} lignes)</h3>
-             <div className="text-sm text-gray-500">
-                 Solde pointé: <span className="font-bold text-gray-800">{formatCurrency(bankLines.reduce((acc, l) => acc + l.amount, 0))}</span>
+        <div className="p-4 border-b bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
+             <div>
+                <h3 className="font-bold text-gray-700">Relevé de Compte ({bankLines.length} lignes)</h3>
+                <div className="text-sm text-gray-500">
+                    Solde pointé: <span className="font-bold text-gray-800">{formatCurrency(bankLines.reduce((acc, l) => acc + l.amount, 0))}</span>
+                </div>
+             </div>
+             <div className="flex gap-2">
+                 <Button variant="secondary" size="sm" onClick={handleClearLinked} className="text-xs" title="Supprimer uniquement les lignes déjà liées">
+                    <Check className="w-3 h-3 mr-1 text-green-600" /> Purger Pointées
+                 </Button>
+                 <Button variant="danger" size="sm" onClick={handleClearAll} className="text-xs" title="Tout supprimer pour recommencer">
+                    <Trash2 className="w-3 h-3 mr-1" /> Tout Vider
+                 </Button>
              </div>
         </div>
         <div className="overflow-x-auto">
