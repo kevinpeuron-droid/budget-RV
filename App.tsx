@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, Transaction, Sponsor, Contribution, AppEvent, Archive, Contact, BudgetLine, BankLine, Volunteer,
@@ -317,7 +316,7 @@ function App() {
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
-    const currentEvent = (eventsList as any)[currentEventId || ''];
+    const currentEvent = eventsList[currentEventId || ''];
     const currentName = currentEvent?.name;
     downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
   };
@@ -328,7 +327,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const currentEvent = (eventsList as any)[currentEventId || ''];
+    const currentEvent = eventsList[currentEventId || ''];
     const currentName = currentEvent?.name;
     link.download = `backup_${currentName || 'data'}.json`;
     document.body.appendChild(link);
@@ -430,7 +429,7 @@ function App() {
         <div className="p-6 print:p-0">
           <div className="hidden print-only mb-6 text-center">
              <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-             <h2 className="text-2xl text-orange-600 font-bold uppercase">{(eventsList[currentEventId || ''] as { name: string } | undefined)?.name}</h2>
+             <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name}</h2>
           </div>
 
           {activeTab === 'dashboard' && <DashboardTab data={data} />}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Transaction, AppData, TransactionType, TransactionStatus, BudgetLine, AppEvent } from '../types';
 import { generateId, formatCurrency } from '../utils';
@@ -117,6 +118,23 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     });
   };
 
+  // Helper pour changer d'onglet sans tout effacer (sauf si on édite déjà une ligne spécifique)
+  const switchType = (newType: TransactionType) => {
+     setType(newType);
+     if (editingId) {
+         // Si on modifie une ligne existante, on annule l'édition pour éviter les conflits d'ID
+         cancelEdit();
+     } else {
+         // Si on est en train de créer, on garde la description, date, montant...
+         // Mais on reset la catégorie car elles sont différentes entre Recette et Dépense
+         setFormData(prev => ({
+             ...prev,
+             category: '',
+             budgetLineId: ''
+         }));
+     }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.description || !formData.category) return;
@@ -191,14 +209,14 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           <Button 
             className="flex-1"
             variant={type === 'RECETTE' ? 'primary' : 'secondary'}
-            onClick={() => { setType('RECETTE'); cancelEdit(); }}
+            onClick={() => switchType('RECETTE')}
           >
             Recettes
           </Button>
           <Button 
             className="flex-1"
             variant={type === 'DEPENSE' ? 'danger' : 'secondary'}
-            onClick={() => { setType('DEPENSE'); cancelEdit(); }}
+            onClick={() => switchType('DEPENSE')}
           >
             Dépenses
           </Button>
@@ -338,7 +356,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
           <div className="flex gap-2">
             <Button type="submit" className="flex-1" variant={editingId ? 'secondary' : 'primary'}>
-              {editingId ? 'Modifier' : (type === 'RECETTE' ? 'Ajouter Recette' : 'Ajouter Dépense')}
+              {editingId ? 'Modifier' : 'Enregistrer (Fin de la saisie)'}
             </Button>
             {editingId && (
               <Button type="button" variant="ghost" onClick={cancelEdit}>
