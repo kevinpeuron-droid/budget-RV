@@ -28,21 +28,37 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
       .filter(t => t.type === 'RECETTE' && t.status === 'PENDING')
       .reduce((acc, curr) => acc + curr.amount, 0);
     
-    // 2. Sponsors
-    // On pourrait filtrer les sponsors par date de paiement si disponible, mais pour l'instant on prend tout
-    // ou on considère que les sponsors affichés sont ceux de l'événement courant.
-    // Idéalement, il faudrait filtrer sponsors par year si 'datePaid' match.
+    // 2. Sponsors - Logique mise à jour pour le multi-année
+    // On regarde dans yearlyData pour l'année sélectionnée
     const recettesSponsorsRealized = data.sponsors.reduce((acc, curr) => {
-        if(curr.datePaid && curr.datePaid.startsWith(year.toString())) {
-             return acc + (curr.amountPaid || 0);
+        // Nouvelle structure
+        const yearData = curr.yearlyData?.[year.toString()];
+        if (yearData) {
+            // Si on a des données pour cette année
+            if (yearData.datePaid) {
+                 return acc + (yearData.amountPaid || 0);
+            }
+        } else if (!curr.yearlyData) {
+             // Fallback ancienne structure (compatibilité) : si pas de yearlyData du tout
+             // On suppose que les données "racine" appartiennent à l'année de création/défaut
+             // Pour être sûr, on peut filtrer par la date racine si elle existe
+             if(curr.datePaid && curr.datePaid.startsWith(year.toString())) {
+                return acc + (curr.amountPaid || 0);
+             }
         }
-        // Si pas de date de paiement, on ne compte pas dans le "Réalisé de l'année" ?
-        // Pour rester simple, si pas de date, on l'inclut, sinon on filtre.
-        if (!curr.datePaid) return acc + (curr.amountPaid || 0);
         return acc;
     }, 0);
 
-    const recettesSponsorsPending = data.sponsors.reduce((acc, curr) => acc + Math.max(0, (curr.amountPromised || 0) - (curr.amountPaid || 0)), 0);
+    const recettesSponsorsPending = data.sponsors.reduce((acc, curr) => {
+        const yearData = curr.yearlyData?.[year.toString()];
+        if (yearData) {
+            return acc + Math.max(0, (yearData.amountPromised || 0) - (yearData.amountPaid || 0));
+        } else if (!curr.yearlyData) {
+             // Fallback
+             return acc + Math.max(0, (curr.amountPromised || 0) - (curr.amountPaid || 0));
+        }
+        return acc;
+    }, 0);
 
     // TOTAUX RECETTES
     const totalRecettesRealized = recettesRealized + recettesSponsorsRealized;

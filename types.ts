@@ -34,24 +34,38 @@ export interface Contribution {
   beneficiary: string;
 }
 
+export interface SponsorYearlyData {
+  amountPromised: number;
+  amountPaid: number;
+  datePaid?: string;
+  dateSent?: string;
+  dateReminder?: string;
+  status: 'En attente' | 'Accepté' | 'Refusé';
+  budgetLineId?: string;
+  transactionId?: string;
+  notes?: string; // Notes spécifiques à l'année
+}
+
 export interface Sponsor {
   id: string;
   name: string;
   contact: string;
   email: string;
   phone?: string;
-  amountPromised: number;
-  amountPaid: number;
-  datePaid?: string; // Date du versement réel
+  notes?: string; // Notes générales sur l'entreprise
+  
+  // Nouvelle structure : Données par année (ex: "2025": { amountPromised: 500... })
+  yearlyData?: Record<string, SponsorYearlyData>;
+
+  // Champs dépréciés (gardés pour compatibilité lors de la migration)
+  amountPromised?: number;
+  amountPaid?: number;
+  datePaid?: string;
   dateSent?: string;
   dateReminder?: string;
-  notes?: string;
-  lastYearTotal?: number;
-  status: 'En attente' | 'Accepté' | 'Refusé';
-  
-  // Champs pour liaison Bilan Financier
-  budgetLineId?: string; // ID de la ligne budgétaire associée
-  transactionId?: string; // ID de la transaction générée automatiquement
+  status?: 'En attente' | 'Accepté' | 'Refusé';
+  budgetLineId?: string; 
+  transactionId?: string; 
 }
 
 export interface Contact {

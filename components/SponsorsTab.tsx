@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { Sponsor, BudgetLine, Transaction } from '../types';
+import { Sponsor, BudgetLine, Transaction, SponsorYearlyData } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Edit, Plus, X, Phone, Calendar, Mail, MessageSquare, ArrowRight, CheckCircle } from 'lucide-react';
+import { Trash2, Edit, Plus, X, Phone, Calendar, Mail, MessageSquare, ArrowRight, CheckCircle, Clock } from 'lucide-react';
 
 interface SponsorsTabProps {
   sponsors: Sponsor[];
   onUpdate: (sponsors: Sponsor[]) => void;
   year: number;
-  budget: BudgetLine[]; // Nécessaire pour les dropdowns
-  transactions: Transaction[]; // Nécessaire pour mettre à jour ou éviter doublons
-  onUpdateTransactions: (transactions: Transaction[]) => void; // Nécessaire pour sauvegarder
+  budget: BudgetLine[];
+  transactions: Transaction[];
+  onUpdateTransactions: (transactions: Transaction[]) => void;
 }
 
 export const SponsorsTab: React.FC<SponsorsTabProps> = ({ 
@@ -22,35 +22,70 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
     onUpdateTransactions 
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // currentSponsor détient les infos globales (nom, contact)
   const [currentSponsor, setCurrentSponsor] = useState<Partial<Sponsor>>({});
   
-  // État local pour gérer la sélection de catégorie dans la modale
+  // currentYearData détient les infos spécifiques à l'année sélectionnée (montant, statut...)
+  // On édite ceci dans la modale
+  const [currentYearData, setCurrentYearData] = useState<Partial<SponsorYearlyData>>({});
+  
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+
+  // Helper pour récupérer les données d'une année spécifique de manière sécurisée
+  const getSponsorDataForYear = (sponsor: Sponsor, targetYear: number): Partial<SponsorYearlyData> => {
+      if (sponsor.yearlyData && sponsor.yearlyData[targetYear.toString()]) {
+          return sponsor.yearlyData[targetYear.toString()];
+      }
+      // Fallback pour compatibilité si pas de yearlyData mais des données à la racine et qu'on est sur une année par défaut (ex 2025)
+      // On évite de le faire systématiquement pour ne pas polluer les années futures
+      if (!sponsor.yearlyData && (sponsor.amountPromised || sponsor.status)) {
+           // On pourrait décider d'afficher les vieilles données SEULEMENT si l'année correspond à une "année pivot"
+           // Pour simplifier : si pas de yearlyData, on considère que c'est vierge pour la nouvelle année demandée
+           return {};
+      }
+      return {};
+  };
 
   const openModal = (sponsor?: Sponsor) => {
     if (sponsor) {
       setCurrentSponsor(sponsor);
-      // Retrouver la catégorie via le budgetLineId si existant
-      if (sponsor.budgetLineId) {
-          const line = budget.find(b => b.id === sponsor.budgetLineId);
+      
+      const yData = getSponsorDataForYear(sponsor, year);
+      setCurrentYearData({
+          amountPromised: yData.amountPromised || 0,
+          amountPaid: yData.amountPaid || 0,
+          datePaid: yData.datePaid || '',
+          dateSent: yData.dateSent || '',
+          dateReminder: yData.dateReminder || '',
+          status: yData.status || 'En attente',
+          budgetLineId: yData.budgetLineId || '',
+          transactionId: yData.transactionId || '',
+          notes: yData.notes || ''
+      });
+
+      // Init categorie dropdown
+      if (yData.budgetLineId) {
+          const line = budget.find(b => b.id === yData.budgetLineId);
           if(line) setSelectedCategory(line.category);
       } else {
           setSelectedCategory('');
       }
+
     } else {
+      // Nouveau Sponsor
       setCurrentSponsor({
         id: generateId(),
         name: '',
         contact: '',
         email: '',
         phone: '',
-        amountPromised: 0,
-        amountPaid: 0,
-        datePaid: '',
-        dateSent: '',
-        dateReminder: '',
-        notes: '',
-        status: 'En attente'
+        notes: ''
+      });
+      setCurrentYearData({
+          amountPromised: 0,
+          amountPaid: 0,
+          status: 'En attente'
       });
       setSelectedCategory('');
     }
@@ -60,6 +95,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
   const closeModal = () => {
     setIsModalOpen(false);
     setCurrentSponsor({});
+    setCurrentYearData({});
     setSelectedCategory('');
   };
 
@@ -67,43 +103,51 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
     e.preventDefault();
     if (!currentSponsor.name || !currentSponsor.id) return;
 
-    // --- LOGIQUE DE SYNCHRO AVEC LE BILAN FINANCIER ---
+    // 1. Préparer les données de l'année
+    const yearDataToSave: SponsorYearlyData = {
+        amountPromised: currentYearData.amountPromised || 0,
+        amountPaid: currentYearData.amountPaid || 0,
+        datePaid: currentYearData.datePaid,
+        dateSent: currentYearData.dateSent,
+        dateReminder: currentYearData.dateReminder,
+        status: currentYearData.status || 'En attente',
+        budgetLineId: currentYearData.budgetLineId,
+        transactionId: currentYearData.transactionId,
+        notes: currentYearData.notes
+    };
+
+    // 2. Gestion Transaction Financière (Auto-Link)
     let transactionToSave: Transaction | null = null;
     let transactionIdToDelete: string | null = null;
-    let newSponsorData = { ...currentSponsor } as Sponsor;
 
-    // Condition : Accepté + Date Paiement + Ligne Budgétaire définie + Montant > 0
     const shouldHaveTransaction = 
-        newSponsorData.status === 'Accepté' && 
-        newSponsorData.datePaid && 
-        newSponsorData.amountPaid > 0 && 
-        newSponsorData.budgetLineId;
+        yearDataToSave.status === 'Accepté' && 
+        yearDataToSave.datePaid && 
+        yearDataToSave.amountPaid > 0 && 
+        yearDataToSave.budgetLineId;
 
     if (shouldHaveTransaction) {
-        const line = budget.find(l => l.id === newSponsorData.budgetLineId);
+        const line = budget.find(l => l.id === yearDataToSave.budgetLineId);
         if (line) {
-            const tId = newSponsorData.transactionId || generateId();
+            const tId = yearDataToSave.transactionId || generateId();
             transactionToSave = {
                 id: tId,
-                date: newSponsorData.datePaid!,
-                amount: newSponsorData.amountPaid,
+                date: yearDataToSave.datePaid!,
+                amount: yearDataToSave.amountPaid,
                 type: 'RECETTE',
                 status: 'REALIZED',
                 category: line.category,
                 budgetLineId: line.id,
-                description: `Partenaire : ${newSponsorData.name}`,
+                description: `Partenaire : ${currentSponsor.name}`,
             };
-            newSponsorData.transactionId = tId;
+            yearDataToSave.transactionId = tId;
         }
-    } else if (newSponsorData.transactionId) {
-        // Si les conditions ne sont plus remplies mais qu'il y avait une transaction, on la supprime
-        transactionIdToDelete = newSponsorData.transactionId;
-        newSponsorData.transactionId = undefined;
-        // On garde le budgetLineId si l'utilisateur veut le réactiver plus tard, ou on peut le vider
-        // newSponsorData.budgetLineId = undefined; 
+    } else if (yearDataToSave.transactionId) {
+        transactionIdToDelete = yearDataToSave.transactionId;
+        yearDataToSave.transactionId = undefined;
     }
 
-    // Mise à jour des Transactions
+    // Mise à jour transactions
     if (transactionToSave) {
         const otherTransactions = transactions.filter(t => t.id !== transactionToSave!.id);
         onUpdateTransactions([...otherTransactions, transactionToSave]);
@@ -111,14 +155,38 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
         onUpdateTransactions(transactions.filter(t => t.id !== transactionIdToDelete));
     }
 
-    // Mise à jour des Sponsors
-    const exists = sponsors.find(s => s.id === newSponsorData.id);
-    let newSponsorsList;
+    // 3. Construction de l'objet Sponsor final
+    const exists = sponsors.find(s => s.id === currentSponsor.id);
+    let finalSponsor: Sponsor;
+
     if (exists) {
-      newSponsorsList = sponsors.map(s => s.id === newSponsorData.id ? newSponsorData : s);
+        // Mise à jour de yearlyData
+        const updatedYearlyData = { ...(exists.yearlyData || {}) };
+        updatedYearlyData[year.toString()] = yearDataToSave;
+
+        finalSponsor = {
+            ...exists,
+            ...currentSponsor, // Nom, contact, etc.
+            yearlyData: updatedYearlyData
+        } as Sponsor;
     } else {
-      newSponsorsList = [...sponsors, newSponsorData];
+        // Création
+        finalSponsor = {
+            ...currentSponsor,
+            id: currentSponsor.id!,
+            name: currentSponsor.name!,
+            contact: currentSponsor.contact || '',
+            email: currentSponsor.email || '',
+            yearlyData: {
+                [year.toString()]: yearDataToSave
+            }
+        } as Sponsor;
     }
+
+    // Sauvegarde liste
+    const newSponsorsList = exists 
+        ? sponsors.map(s => s.id === finalSponsor.id ? finalSponsor : s)
+        : [...sponsors, finalSponsor];
     
     onUpdate(newSponsorsList);
     closeModal();
@@ -127,9 +195,13 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
   const deleteSponsor = (id: string) => {
     if (window.confirm('Supprimer ce sponsor ?')) {
       const sp = sponsors.find(s => s.id === id);
-      // Supprimer aussi la transaction liée si elle existe
-      if (sp?.transactionId) {
-          onUpdateTransactions(transactions.filter(t => t.id !== sp.transactionId));
+      // Supprimer toutes les transactions liées de toutes les années ?
+      // Pour l'instant on supprime juste celle de l'année en cours ou toutes si on supprime le sponsor complet
+      if(sp?.yearlyData) {
+          const tIds = Object.values(sp.yearlyData).map((y: SponsorYearlyData) => y.transactionId).filter(Boolean) as string[];
+          if(tIds.length > 0) {
+              onUpdateTransactions(transactions.filter(t => !tIds.includes(t.id)));
+          }
       }
       onUpdate(sponsors.filter(s => s.id !== id));
     }
@@ -144,7 +216,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
     }
   };
 
-  // Filtrage pour les dropdowns
+  // Dropdowns
   const availableCategories = Array.from(new Set(
       budget.filter(l => l.section === 'RECETTE').map(l => l.category)
   ));
@@ -153,10 +225,15 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
       l.section === 'RECETTE' && l.category === selectedCategory
   );
 
+  // Données N-1 pour la modale
+  const previousYearData = currentSponsor.id 
+     ? getSponsorDataForYear(sponsors.find(s => s.id === currentSponsor.id) || {} as Sponsor, year - 1) 
+     : {};
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-800">Gestion des Partenaires & Sponsors</h2>
+        <h2 className="text-xl font-bold text-gray-800">Partenaires & Sponsors {year}</h2>
         <Button onClick={() => openModal()}>
           <Plus className="w-4 h-4 mr-2" /> Nouveau Dossier
         </Button>
@@ -169,7 +246,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Organisation / Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coordonnées</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dates Clés</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Suivi {year}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant {year}</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Versé</th>
@@ -177,87 +254,91 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sponsors.map((sponsor) => (
-                <tr key={sponsor.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="text-sm font-bold text-gray-900">{sponsor.name}</div>
-                    <div className="text-xs text-gray-500">{sponsor.contact}</div>
-                    {sponsor.notes && (
-                      <div className="mt-1 text-xs text-gray-400 italic max-w-xs truncate" title={sponsor.notes}>
-                        <MessageSquare className="w-3 h-3 inline mr-1" />
-                        {sponsor.notes}
-                      </div>
-                    )}
-                    {sponsor.transactionId && (
-                        <div className="mt-1 inline-flex items-center text-xs text-green-600 bg-green-50 px-1 rounded border border-green-100" title="Intégré au Bilan Financier">
-                            <CheckCircle className="w-3 h-3 mr-1" /> Comptabilisé
+              {sponsors.map((sponsor) => {
+                  const yData = getSponsorDataForYear(sponsor, year);
+                  
+                  return (
+                    <tr key={sponsor.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="text-sm font-bold text-gray-900">{sponsor.name}</div>
+                        <div className="text-xs text-gray-500">{sponsor.contact}</div>
+                        {yData.notes && (
+                        <div className="mt-1 text-xs text-gray-400 italic max-w-xs truncate" title={yData.notes}>
+                            <MessageSquare className="w-3 h-3 inline mr-1" />
+                            {yData.notes}
                         </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex flex-col space-y-1">
-                      {sponsor.email && (
-                        <div className="flex items-center text-xs text-gray-600">
-                          <Mail className="w-3 h-3 mr-1" /> <a href={`mailto:${sponsor.email}`} className="hover:underline">{sponsor.email}</a>
+                        )}
+                        {yData.transactionId && (
+                            <div className="mt-1 inline-flex items-center text-xs text-green-600 bg-green-50 px-1 rounded border border-green-100" title="Intégré au Bilan Financier">
+                                <CheckCircle className="w-3 h-3 mr-1" /> Comptabilisé
+                            </div>
+                        )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex flex-col space-y-1">
+                        {sponsor.email && (
+                            <div className="flex items-center text-xs text-gray-600">
+                            <Mail className="w-3 h-3 mr-1" /> <a href={`mailto:${sponsor.email}`} className="hover:underline">{sponsor.email}</a>
+                            </div>
+                        )}
+                        {sponsor.phone && (
+                            <div className="flex items-center text-xs text-gray-600">
+                            <Phone className="w-3 h-3 mr-1" /> {sponsor.phone}
+                            </div>
+                        )}
                         </div>
-                      )}
-                      {sponsor.phone && (
-                        <div className="flex items-center text-xs text-gray-600">
-                          <Phone className="w-3 h-3 mr-1" /> {sponsor.phone}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="text-xs text-gray-500 space-y-1">
+                        {yData.dateSent ? (
+                            <div className="flex items-center" title="Dossier envoyé le">
+                            <span className="w-16 inline-block text-gray-400">Envoyé:</span>
+                            <span className="font-medium">{new Date(yData.dateSent).toLocaleDateString()}</span>
+                            </div>
+                        ) : <span className="text-gray-300 italic">Non envoyé</span>}
+                        {yData.dateReminder && (
+                            <div className="flex items-center text-orange-600" title="Dernière relance le">
+                            <span className="w-16 inline-block text-orange-400">Relance:</span>
+                            <span className="font-medium">{new Date(yData.dateReminder).toLocaleDateString()}</span>
+                            </div>
+                        )}
                         </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="text-xs text-gray-500 space-y-1">
-                      {sponsor.dateSent && (
-                        <div className="flex items-center" title="Dossier envoyé le">
-                          <span className="w-16 inline-block text-gray-400">Envoyé:</span>
-                          <span className="font-medium">{new Date(sponsor.dateSent).toLocaleDateString()}</span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${getStatusColor(yData.status || 'En attente')}`}>
+                        {yData.status || 'En attente'}
+                        </span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-medium">
+                        {yData.amountPromised ? formatCurrency(yData.amountPromised) : '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">
+                        <div>{yData.amountPaid ? formatCurrency(yData.amountPaid) : '-'}</div>
+                        {yData.datePaid && (
+                            <div className="text-xs text-gray-400 font-normal">le {new Date(yData.datePaid).toLocaleDateString()}</div>
+                        )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex justify-end gap-2">
+                        <button 
+                            onClick={() => openModal(sponsor)} 
+                            className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md shadow-sm border border-blue-200 transition-colors"
+                            title="Modifier"
+                        >
+                            <Edit className="w-4 h-4" />
+                        </button>
+                        <button 
+                            onClick={() => deleteSponsor(sponsor.id)} 
+                            className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md shadow-sm border border-red-200 transition-colors"
+                            title="Supprimer"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
                         </div>
-                      )}
-                      {sponsor.dateReminder && (
-                         <div className="flex items-center text-orange-600" title="Dernière relance le">
-                           <span className="w-16 inline-block text-orange-400">Relance:</span>
-                           <span className="font-medium">{new Date(sponsor.dateReminder).toLocaleDateString()}</span>
-                         </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${getStatusColor(sponsor.status)}`}>
-                      {sponsor.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-medium">
-                    {formatCurrency(sponsor.amountPromised)}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">
-                    <div>{formatCurrency(sponsor.amountPaid)}</div>
-                    {sponsor.datePaid && (
-                         <div className="text-xs text-gray-400 font-normal">le {new Date(sponsor.datePaid).toLocaleDateString()}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => openModal(sponsor)} 
-                        className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md shadow-sm border border-blue-200 transition-colors"
-                        title="Modifier"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => deleteSponsor(sponsor.id)} 
-                        className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-md shadow-sm border border-red-200 transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -272,18 +353,35 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
               <form onSubmit={handleSave} className="flex flex-col h-full">
                 <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg leading-6 font-bold text-gray-900" id="modal-title">
-                      {currentSponsor.id ? 'Modifier le dossier' : 'Nouveau Dossier Sponsor'}
-                    </h3>
+                    <div>
+                        <h3 className="text-lg leading-6 font-bold text-gray-900" id="modal-title">
+                        {currentSponsor.id ? 'Dossier Partenaire' : 'Nouveau Dossier'}
+                        </h3>
+                        <p className="text-sm text-gray-500">Exercice {year}</p>
+                    </div>
                     <button type="button" onClick={closeModal} className="text-gray-400 hover:text-gray-500">
                       <X className="w-6 h-6" />
                     </button>
                   </div>
                   
                   <div className="space-y-4">
-                    {/* Identité */}
+                    {/* INFO N-1 */}
+                    {(previousYearData.amountPaid || previousYearData.amountPromised) ? (
+                        <div className="bg-gray-100 p-3 rounded border border-gray-300 flex items-center justify-between text-xs text-gray-600">
+                             <div className="flex items-center gap-2">
+                                 <Clock className="w-4 h-4" />
+                                 <span className="font-semibold">Bilan {year - 1} :</span>
+                             </div>
+                             <div>
+                                 <span className="mr-3">Promis: {formatCurrency(previousYearData.amountPromised || 0)}</span>
+                                 <span className="font-bold text-green-700">Versé: {formatCurrency(previousYearData.amountPaid || 0)}</span>
+                             </div>
+                        </div>
+                    ) : null}
+
+                    {/* Identité (Global) */}
                     <div className="bg-gray-50 p-3 rounded-md border border-gray-200 space-y-3">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Identité</h4>
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Identité (Fiche Globale)</h4>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Nom de l'entreprise / Organisation</label>
                         <input
@@ -296,7 +394,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">Contact (Prénom Nom)</label>
+                          <label className="block text-sm font-medium text-gray-700">Contact</label>
                           <input
                             type="text"
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
@@ -307,33 +405,24 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                         <div>
                           <label className="block text-sm font-medium text-gray-700">Email</label>
                           <input
-                            type="email" placeholder="contact@entreprise.fr"
+                            type="email" 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
                             value={currentSponsor.email || ''}
                             onChange={e => setCurrentSponsor({...currentSponsor, email: e.target.value})}
                           />
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Téléphone</label>
-                        <input
-                          type="tel"
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
-                          value={currentSponsor.phone || ''}
-                          onChange={e => setCurrentSponsor({...currentSponsor, phone: e.target.value})}
-                        />
-                      </div>
                     </div>
 
-                    {/* Dates & Statut */}
+                    {/* Dates & Statut (Annuel) */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Date dossier envoyé</label>
+                        <label className="block text-sm font-medium text-gray-700">Date dossier envoyé ({year})</label>
                         <input
                           type="date"
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
-                          value={currentSponsor.dateSent || ''}
-                          onChange={e => setCurrentSponsor({...currentSponsor, dateSent: e.target.value})}
+                          value={currentYearData.dateSent || ''}
+                          onChange={e => setCurrentYearData({...currentYearData, dateSent: e.target.value})}
                         />
                       </div>
                       <div>
@@ -341,31 +430,31 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                         <input
                           type="date"
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
-                          value={currentSponsor.dateReminder || ''}
-                          onChange={e => setCurrentSponsor({...currentSponsor, dateReminder: e.target.value})}
+                          value={currentYearData.dateReminder || ''}
+                          onChange={e => setCurrentYearData({...currentYearData, dateReminder: e.target.value})}
                         />
                       </div>
                     </div>
 
-                    {/* Financier & Statut */}
+                    {/* Financier & Statut (Annuel) */}
                     <div className="bg-blue-50 p-3 rounded-md border border-blue-100 space-y-3">
-                      <h4 className="text-xs font-bold text-blue-700 uppercase tracking-wide">Suivi Financier</h4>
+                      <h4 className="text-xs font-bold text-blue-700 uppercase tracking-wide">Suivi Financier {year}</h4>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">Montant Promis/Attendu (€)</label>
+                          <label className="block text-sm font-medium text-gray-700">Montant Promis/Attendu</label>
                           <input
                             type="number" step="0.01"
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 font-bold"
-                            value={currentSponsor.amountPromised || 0}
-                            onChange={e => setCurrentSponsor({...currentSponsor, amountPromised: parseFloat(e.target.value)})}
+                            value={currentYearData.amountPromised || 0}
+                            onChange={e => setCurrentYearData({...currentYearData, amountPromised: parseFloat(e.target.value)})}
                           />
                         </div>
                         <div>
                            <label className="block text-sm font-medium text-gray-700">Statut</label>
                             <select
                               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
-                              value={currentSponsor.status || 'En attente'}
-                              onChange={e => setCurrentSponsor({...currentSponsor, status: e.target.value as any})}
+                              value={currentYearData.status || 'En attente'}
+                              onChange={e => setCurrentYearData({...currentYearData, status: e.target.value as any})}
                             >
                               <option value="En attente">En attente</option>
                               <option value="Accepté">Accepté</option>
@@ -383,8 +472,8 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                                  <input
                                     type="number" step="0.01"
                                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm bg-white"
-                                    value={currentSponsor.amountPaid || 0}
-                                    onChange={e => setCurrentSponsor({...currentSponsor, amountPaid: parseFloat(e.target.value)})}
+                                    value={currentYearData.amountPaid || 0}
+                                    onChange={e => setCurrentYearData({...currentYearData, amountPaid: parseFloat(e.target.value)})}
                                   />
                               </div>
                               <div>
@@ -392,8 +481,8 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                                  <input
                                     type="date"
                                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm bg-white"
-                                    value={currentSponsor.datePaid || ''}
-                                    onChange={e => setCurrentSponsor({...currentSponsor, datePaid: e.target.value})}
+                                    value={currentYearData.datePaid || ''}
+                                    onChange={e => setCurrentYearData({...currentYearData, datePaid: e.target.value})}
                                   />
                               </div>
                           </div>
@@ -407,16 +496,13 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                                  id="addToBudget"
                                  type="checkbox"
                                  className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded"
-                                 checked={!!currentSponsor.budgetLineId} // Si un ID existe, c'est coché
+                                 checked={!!currentYearData.budgetLineId}
                                  onChange={(e) => {
                                      if (!e.target.checked) {
-                                         // On décoche -> on vide les champs
-                                         setCurrentSponsor({ ...currentSponsor, budgetLineId: undefined });
+                                         setCurrentYearData({ ...currentYearData, budgetLineId: undefined });
                                          setSelectedCategory('');
                                      } else {
-                                         // On coche -> on initialise (facultatif, juste pour trigger le rendu)
-                                         // On force une update pour re-render les selects
-                                         setCurrentSponsor({ ...currentSponsor }); 
+                                         setCurrentYearData({ ...currentYearData }); 
                                      }
                                  }}
                                />
@@ -427,8 +513,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                              </div>
                           </div>
 
-                          {/* Dropdowns conditionnels */}
-                          {(currentSponsor.budgetLineId !== undefined || (document.getElementById('addToBudget') as HTMLInputElement)?.checked) && (
+                          {(currentYearData.budgetLineId !== undefined || (document.getElementById('addToBudget') as HTMLInputElement)?.checked) && (
                               <div className="mt-3 grid grid-cols-1 gap-2 bg-white p-2 rounded border border-gray-200">
                                    <div>
                                       <label className="block text-xs font-medium text-gray-700">Catégorie</label>
@@ -437,7 +522,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                                           value={selectedCategory}
                                           onChange={e => {
                                               setSelectedCategory(e.target.value);
-                                              setCurrentSponsor({...currentSponsor, budgetLineId: ''}); // Reset sub-selection
+                                              setCurrentYearData({...currentYearData, budgetLineId: ''});
                                           }}
                                       >
                                           <option value="">-- Choisir Catégorie --</option>
@@ -449,8 +534,8 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                                           <label className="block text-xs font-medium text-gray-700">Libellé Budgétaire</label>
                                           <select
                                               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-1 text-sm"
-                                              value={currentSponsor.budgetLineId || ''}
-                                              onChange={e => setCurrentSponsor({...currentSponsor, budgetLineId: e.target.value})}
+                                              value={currentYearData.budgetLineId || ''}
+                                              onChange={e => setCurrentYearData({...currentYearData, budgetLineId: e.target.value})}
                                           >
                                               <option value="">-- Choisir Libellé --</option>
                                               {availableBudgetLines.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
@@ -462,15 +547,14 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                       </div>
                     </div>
 
-                    {/* Notes */}
+                    {/* Notes Année */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Annotations / Notes</label>
+                      <label className="block text-sm font-medium text-gray-700">Notes / Commentaires {year}</label>
                       <textarea
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
                         rows={3}
-                        placeholder="Commentaires, conditions particulières..."
-                        value={currentSponsor.notes || ''}
-                        onChange={e => setCurrentSponsor({...currentSponsor, notes: e.target.value})}
+                        value={currentYearData.notes || ''}
+                        onChange={e => setCurrentYearData({...currentYearData, notes: e.target.value})}
                       />
                     </div>
 
