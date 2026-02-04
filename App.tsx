@@ -576,7 +576,14 @@ function App() {
                 )}
 
                 {activeTab === 'sponsors' && (
-                   <SponsorsTab sponsors={data.sponsors} onUpdate={updateSponsors} year={selectedYear} />
+                   <SponsorsTab 
+                       sponsors={data.sponsors} 
+                       onUpdate={updateSponsors} 
+                       year={selectedYear}
+                       budget={data.budget}
+                       transactions={data.realized}
+                       onUpdateTransactions={updateRealized}
+                   />
                 )}
 
                 {activeTab === 'directory' && (

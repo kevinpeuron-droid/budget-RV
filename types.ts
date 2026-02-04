@@ -48,6 +48,10 @@ export interface Sponsor {
   notes?: string;
   lastYearTotal?: number;
   status: 'En attente' | 'Accepté' | 'Refusé';
+  
+  // Champs pour liaison Bilan Financier
+  budgetLineId?: string; // ID de la ligne budgétaire associée
+  transactionId?: string; // ID de la transaction générée automatiquement
 }
 
 export interface Contact {
