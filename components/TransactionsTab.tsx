@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Transaction, AppData, TransactionType, TransactionStatus, BudgetLine, AppEvent } from '../types';
 import { generateId, formatCurrency } from '../utils';
@@ -11,6 +10,7 @@ interface TransactionsTabProps {
   events: AppEvent[];
   isProvisional: boolean;
   onUpdate: (updatedTransactions: Transaction[]) => void;
+  year: number;
 }
 
 export const TransactionsTab: React.FC<TransactionsTabProps> = ({
@@ -18,12 +18,25 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   budget,
   events,
   isProvisional,
-  onUpdate
+  onUpdate,
+  year
 }) => {
   const [type, setType] = useState<TransactionType>('RECETTE');
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Fonction pour obtenir une date valide par défaut dans l'année sélectionnée
+  const getDefaultDate = () => {
+    const today = new Date();
+    // Si l'année courante correspond à l'année sélectionnée, on prend aujourd'hui.
+    // Sinon, on prend le 1er janvier de l'année sélectionnée.
+    if (today.getFullYear() === year) {
+        return today.toISOString().split('T')[0];
+    }
+    return `${year}-01-01`;
+  };
+
   const [formData, setFormData] = useState<Partial<Transaction>>({
-    date: new Date().toISOString().split('T')[0],
+    date: getDefaultDate(),
     description: '',
     category: '', // Contiendra la catégorie principale
     budgetLineId: '', // Contiendra l'ID de la ligne précise (Libellé)
@@ -33,6 +46,13 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     hours: 0,
     hourlyRate: 11.65 
   });
+
+  // Mettre à jour la date par défaut si l'année change
+  useEffect(() => {
+     if (!editingId) {
+         setFormData(prev => ({...prev, date: getDefaultDate()}));
+     }
+  }, [year]);
 
   // Dériver les catégories disponibles depuis le budget
   const availableCategories = Array.from(new Set(
@@ -106,7 +126,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const cancelEdit = () => {
     setEditingId(null);
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: getDefaultDate(),
       description: '',
       category: '',
       budgetLineId: '',
@@ -198,7 +218,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
   };
 
-  const filteredTransactions = transactions.filter(t => t.type === type);
+  // Filtrer les transactions par type ET par année
+  const filteredTransactions = transactions.filter(t => 
+    t.type === type && t.date.startsWith(year.toString())
+  );
+  
   const total = filteredTransactions.reduce((acc, t) => acc + t.amount, 0);
 
   return (
@@ -370,7 +394,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       {/* Table */}
       <div className="bg-white rounded-lg shadow lg:col-span-2 overflow-hidden flex flex-col">
         <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-          <h3 className="font-bold text-gray-700">Liste des {type === 'RECETTE' ? 'Recettes' : 'Dépenses'} ({filteredTransactions.length})</h3>
+          <h3 className="font-bold text-gray-700">Liste des {type === 'RECETTE' ? 'Recettes' : 'Dépenses'} {year}</h3>
           <span className={`text-xl font-bold ${type === 'RECETTE' ? 'text-green-600' : 'text-red-600'}`}>
             Total: {formatCurrency(total)}
           </span>
@@ -391,7 +415,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               {filteredTransactions.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
-                    Aucune transaction enregistrée
+                    Aucune transaction enregistrée pour {year}
                   </td>
                 </tr>
               )}

@@ -7,9 +7,10 @@ import { Trash2, Edit, Plus, X, Phone, Calendar, Mail, MessageSquare } from 'luc
 interface SponsorsTabProps {
   sponsors: Sponsor[];
   onUpdate: (sponsors: Sponsor[]) => void;
+  year: number; // Nouvelle prop
 }
 
-export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) => {
+export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate, year }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentSponsor, setCurrentSponsor] = useState<Partial<Sponsor>>({});
 
@@ -88,7 +89,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) 
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coordonnées</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dates Clés</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant 2025</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant {year}</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Versé</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
@@ -264,7 +265,7 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({ sponsors, onUpdate }) 
                       <h4 className="text-xs font-bold text-blue-700 uppercase tracking-wide">Suivi Financier</h4>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">Montant 2025 (€)</label>
+                          <label className="block text-sm font-medium text-gray-700">Montant {year} (€)</label>
                           <input
                             type="number" step="0.01"
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 font-bold"

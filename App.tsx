@@ -21,7 +21,7 @@ import {
   LayoutDashboard, Wallet, PiggyBank, HandHeart, Users, Settings, 
   Archive as ArchiveIcon, Download, Upload, Printer, Contact as ContactIcon,
   Landmark, Plus, Tent, AlertTriangle, UserPlus, Edit2, Trash2,
-  Cloud, CheckCircle, Loader2
+  Cloud, CheckCircle, Loader2, Calendar
 } from 'lucide-react';
 
 const INITIAL_STATE: AppState = {
@@ -80,6 +80,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  
+  // Année globale sélectionnée
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
   // 1. Charger la liste des événements et gérer l'initialisation
   useEffect(() => {
@@ -142,6 +145,13 @@ function App() {
     return onValue(eventDataRef, (snapshot) => {
       const val = snapshot.val();
       if (val) {
+        // Mise à jour de l'année sélectionnée si elle vient de changer dans la BDD
+        // (Optionnel : on peut décider de garder l'année locale ou de se synchroniser)
+        if (val.budgetYear) {
+            // On ne force pas le set ici pour éviter les sauts si l'user change manuellement
+            // Mais à l'initialisation c'est bien
+        }
+
         setData(prev => ({
           ...INITIAL_STATE,
           ...val,
@@ -176,9 +186,6 @@ function App() {
     setSaveStatus('saving');
 
     // NETTOYAGE CRITIQUE : Suppression des undefined
-    // On utilise JSON.stringify/parse comme méthode radicale pour nettoyer les undefined
-    // ou transformer en null si on utilisait une fonction custom.
-    // Ici, sanitizeData s'assure que tout undefined devient null explicitement.
     const cleanValue = sanitizeData(value);
 
     // Envoi Firebase
@@ -190,14 +197,19 @@ function App() {
       .catch((err) => {
           console.error("Erreur sauvegarde Firebase:", err);
           setSaveStatus('error');
-          // alert("Erreur de sauvegarde ! Vérifiez votre connexion."); // Désactivé pour éviter le spam
       });
   };
 
   // Wrappers spécifiques par type de donnée
   const updateRealized = (transactions: Transaction[]) => syncToFirebase('realized', transactions);
   const updateBudget = (budgetLines: BudgetLine[]) => syncToFirebase('budget', budgetLines);
-  const updateBudgetYear = (year: number) => syncToFirebase('budgetYear', year);
+  
+  // Quand on change l'année, on met à jour l'état local ET la base de données
+  const handleYearChange = (year: number) => {
+      setSelectedYear(year);
+      syncToFirebase('budgetYear', year);
+  };
+
   const updateSponsors = (sponsors: Sponsor[]) => syncToFirebase('sponsors', sponsors);
   const updateContributions = (contributions: Contribution[]) => syncToFirebase('contributions', contributions);
   const updateContacts = (contacts: Contact[]) => syncToFirebase('contacts', contacts);
@@ -345,10 +357,10 @@ function App() {
           status: 'REALIZED',
           category: category,
           budgetLineId: budgetLineId,
-          eventId: null as any, // Null explicite pour Firebase
+          eventId: null as any,
           isBenevolat: false,
-          hours: null as any, // Null explicite
-          hourlyRate: null as any // Null explicite
+          hours: null as any, 
+          hourlyRate: null as any 
       };
 
       const updatedTransactions = [...data.realized, newTransaction];
@@ -377,6 +389,9 @@ function App() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // Génération de la liste des années disponibles (ex: 2020 à Année courante + 1)
+  const availableYears = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 3 + i);
 
   if (connectionError) return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
@@ -423,8 +438,9 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto h-screen print:h-auto print:overflow-visible">
-        <header className="bg-white shadow px-6 py-4 flex justify-between items-center no-print sticky top-0 z-10">
-          <div className="flex items-center gap-4">
+        <header className="bg-white shadow px-6 py-4 flex flex-col md:flex-row justify-between items-center no-print sticky top-0 z-10 gap-4">
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+             {/* Selecteur d'Edition */}
              <div className="relative">
                 <select 
                   className="bg-orange-50 border border-orange-200 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-64 p-2.5 font-bold"
@@ -438,6 +454,22 @@ function App() {
                 </select>
              </div>
              
+             {/* Selecteur d'Année Globale */}
+             <div className="flex items-center bg-gray-100 rounded-lg p-1 border border-gray-200">
+                <span className="px-3 text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center">
+                   <Calendar className="w-3 h-3 mr-1" /> Exercice
+                </span>
+                <select
+                    className="bg-white border-0 text-gray-800 text-sm font-bold rounded focus:ring-0 py-1.5 pl-2 pr-8 cursor-pointer"
+                    value={selectedYear}
+                    onChange={(e) => handleYearChange(parseInt(e.target.value))}
+                >
+                    {availableYears.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                    ))}
+                </select>
+             </div>
+
              {currentEventId && (
                 <div className="flex gap-1">
                     <Button size="sm" variant="ghost" onClick={handleRenameEvent} title="Renommer l'édition" className="text-gray-500 hover:text-blue-600">
@@ -491,10 +523,12 @@ function App() {
              <>
                 <div className="hidden print-only mb-6 text-center">
                    <h1 className="text-4xl font-bold text-gray-900 mb-2">Budget Prévisionnel</h1>
-                   <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name}</h2>
+                   <h2 className="text-2xl text-orange-600 font-bold uppercase">{eventsList[currentEventId || '']?.name} - {selectedYear}</h2>
                 </div>
 
-                {activeTab === 'dashboard' && <DashboardTab data={data} />}
+                {/* On passe selectedYear à tous les composants */}
+
+                {activeTab === 'dashboard' && <DashboardTab data={data} year={selectedYear} />}
                 
                 {activeTab === 'volunteers' && (
                    <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
@@ -504,10 +538,10 @@ function App() {
                   <BudgetTab 
                     budgetLines={data.budget} 
                     transactions={data.realized}
-                    year={data.budgetYear}
+                    year={selectedYear}
                     archives={data.archives}
                     onUpdate={updateBudget}
-                    onYearChange={updateBudgetYear}
+                    onYearChange={handleYearChange} // Contrôlé par le header
                   />
                 )}
 
@@ -518,6 +552,7 @@ function App() {
                     events={data.eventsList || []} 
                     isProvisional={false}
                     onUpdate={updateRealized}
+                    year={selectedYear}
                   />
                 )}
 
@@ -532,6 +567,7 @@ function App() {
                     onLinkTransaction={handleLinkTransaction}
                     onUnlinkTransaction={handleUnlinkTransaction}
                     onCreateFromBank={handleCreateFromBank}
+                    year={selectedYear}
                   />
                 )}
 
@@ -540,7 +576,7 @@ function App() {
                 )}
 
                 {activeTab === 'sponsors' && (
-                   <SponsorsTab sponsors={data.sponsors} onUpdate={updateSponsors} />
+                   <SponsorsTab sponsors={data.sponsors} onUpdate={updateSponsors} year={selectedYear} />
                 )}
 
                 {activeTab === 'directory' && (

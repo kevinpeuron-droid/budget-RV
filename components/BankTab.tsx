@@ -8,12 +8,13 @@ interface BankTabProps {
   bankLines: BankLine[];
   transactions: Transaction[];
   budget: BudgetLine[];
-  lastPointedDate?: string; // Nouvelle prop
+  lastPointedDate?: string; 
   onUpdateBankLines: (lines: BankLine[]) => void;
-  onUpdateLastPointedDate: (date: string) => void; // Nouvelle prop
+  onUpdateLastPointedDate: (date: string) => void;
   onLinkTransaction: (bankId: string, transactionId: string) => void;
   onUnlinkTransaction: (bankId: string) => void;
   onCreateFromBank: (bankId: string, category: string, budgetLineId: string, description: string) => void;
+  year: number; // Nouvelle prop
 }
 
 export const BankTab: React.FC<BankTabProps> = ({ 
@@ -25,7 +26,8 @@ export const BankTab: React.FC<BankTabProps> = ({
   onUpdateLastPointedDate,
   onLinkTransaction,
   onUnlinkTransaction,
-  onCreateFromBank
+  onCreateFromBank,
+  year
 }) => {
   const [newLine, setNewLine] = useState<Partial<BankLine>>({ date: '', description: '', amount: 0 });
   const [importText, setImportText] = useState('');
@@ -35,6 +37,9 @@ export const BankTab: React.FC<BankTabProps> = ({
   // Create New Modal State
   const [creatingBankId, setCreatingBankId] = useState<string | null>(null);
   const [createFormData, setCreateFormData] = useState({ category: '', budgetLineId: '', description: '' });
+
+  // Filtrer les lignes bancaires affichées
+  const displayedBankLines = bankLines.filter(l => l.date.startsWith(year.toString()));
 
   // Add Manual Line
   const handleAddManual = () => {
@@ -93,7 +98,6 @@ export const BankTab: React.FC<BankTabProps> = ({
          const credit = parseFloat(creditStr) || 0;
 
          // Le montant est Crédit - Débit (Débit est souvent positif dans le CSV mais négatif comptablement)
-         // Si la colonne Débit contient déjà un signe négatif, il faut gérer le cas, mais généralement en CSV bancaire c'est positif.
          // On assume ici que les colonnes C et D contiennent des valeurs absolues.
          amount = credit - Math.abs(debit);
 
@@ -284,9 +288,9 @@ export const BankTab: React.FC<BankTabProps> = ({
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="p-4 border-b bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
              <div>
-                <h3 className="font-bold text-gray-700">Relevé de Compte ({bankLines.length} lignes)</h3>
+                <h3 className="font-bold text-gray-700">Relevé de Compte {year} ({displayedBankLines.length} lignes)</h3>
                 <div className="text-sm text-gray-500">
-                    Solde pointé: <span className="font-bold text-gray-800">{formatCurrency(bankLines.reduce((acc, l) => acc + l.amount, 0))}</span>
+                    Solde pointé sur la période: <span className="font-bold text-gray-800">{formatCurrency(displayedBankLines.reduce((acc, l) => acc + l.amount, 0))}</span>
                 </div>
              </div>
              <div className="flex gap-2">
@@ -311,7 +315,14 @@ export const BankTab: React.FC<BankTabProps> = ({
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {bankLines.map(line => {
+                    {displayedBankLines.length === 0 && (
+                        <tr>
+                            <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                                Aucune opération bancaire pour {year}
+                            </td>
+                        </tr>
+                    )}
+                    {displayedBankLines.map(line => {
                         const linkedTx = transactions.find(t => t.id === line.transactionId);
                         const isLinked = !!linkedTx;
 

@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { BudgetLine, Transaction, Archive } from '../types';
 import { formatCurrency, generateId, downloadCSV } from '../utils';
 import { Button } from './ui/Button';
-import { Printer, Plus, Trash2, Edit2, Check, X, FolderPlus, History, Download, Upload } from 'lucide-react';
+import { Printer, Plus, Trash2, Edit2, Check, X, FolderPlus, History, Download, Upload, Calculator } from 'lucide-react';
 
 interface BudgetTabProps {
   budgetLines: BudgetLine[];
@@ -17,19 +16,19 @@ interface BudgetTabProps {
 interface BudgetRowProps {
     line: BudgetLine;
     realizedN: number;
-    archivedNMinus1: number | null;
+    // Nouveaux props pour gérer la source du N-1
+    valueNMinus1: number;
+    sourceNMinus1: 'LIVE' | 'ARCHIVE' | 'MANUAL';
+    
     onDelete: (id: string) => void;
     onUpdateLine: (id: string, field: 'label' | 'amountNMinus1', value: any) => void;
 }
 
 // Sous-composant pour isoler l'état de saisie d'une ligne
-// Cela évite que tout le tableau se rafraîchisse à chaque lettre tapée
-const BudgetRow: React.FC<BudgetRowProps> = ({ line, realizedN, archivedNMinus1, onDelete, onUpdateLine }) => {
-    // État local pour fluidifier la saisie sans re-rendu global
+const BudgetRow: React.FC<BudgetRowProps> = ({ line, realizedN, valueNMinus1, sourceNMinus1, onDelete, onUpdateLine }) => {
     const [label, setLabel] = useState(line.label);
     const [amountStr, setAmountStr] = useState(line.amountNMinus1.toString());
 
-    // On ne met à jour le local que si la prop change vraiment (ex: chargement initial ou modif externe)
     useEffect(() => {
         setLabel(line.label);
     }, [line.label]);
@@ -51,9 +50,38 @@ const BudgetRow: React.FC<BudgetRowProps> = ({ line, realizedN, archivedNMinus1,
         }
     };
 
-    const finalNMinus1 = archivedNMinus1 ?? (parseFloat(amountStr) || 0);
-    const gap = realizedN - finalNMinus1;
+    const gap = realizedN - valueNMinus1;
     const gapColor = gap > 0 ? 'text-green-600' : (gap < 0 ? 'text-red-600' : 'text-gray-400');
+
+    const renderNMinus1Cell = () => {
+        if (sourceNMinus1 === 'LIVE') {
+            return (
+                <div className="flex items-center justify-end gap-1 text-blue-700 font-medium bg-blue-50 px-2 py-1 rounded" title="Calculé automatiquement depuis les transactions de l'année précédente">
+                    <Calculator className="w-3 h-3" />
+                    {formatCurrency(valueNMinus1)}
+                </div>
+            );
+        }
+        if (sourceNMinus1 === 'ARCHIVE') {
+            return (
+                <div className="flex items-center justify-end gap-1 text-gray-500 font-medium bg-gray-50 px-2 py-1 rounded" title="Issu de l'archive clôturée">
+                    <History className="w-3 h-3" />
+                    {formatCurrency(valueNMinus1)}
+                </div>
+            );
+        }
+        // Manual
+        return (
+            <input 
+                type="number" step="0.01"
+                className="w-full bg-transparent border-none focus:ring-0 p-0 text-right text-sm focus:bg-white focus:shadow-sm rounded px-2 text-gray-500"
+                value={amountStr}
+                onChange={(e) => setAmountStr(e.target.value)}
+                onBlur={handleBlurAmount}
+                placeholder="0,00 €"
+            />
+        );
+    };
 
     return (
         <tr className="hover:bg-gray-50 group">
@@ -68,22 +96,9 @@ const BudgetRow: React.FC<BudgetRowProps> = ({ line, realizedN, archivedNMinus1,
                 />
             </td>
             <td className="px-4 py-2 text-sm text-right text-gray-600 relative border-r border-gray-50">
-                {archivedNMinus1 !== null ? (
-                    <div className="flex items-center justify-end gap-1 text-gray-500 font-medium bg-gray-50 px-2 py-1 rounded">
-                        <History className="w-3 h-3 text-blue-400" />
-                        {formatCurrency(archivedNMinus1)}
-                    </div>
-                ) : (
-                    <input 
-                        type="number" step="0.01"
-                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-right text-sm focus:bg-white focus:shadow-sm rounded px-2"
-                        value={amountStr}
-                        onChange={(e) => setAmountStr(e.target.value)}
-                        onBlur={handleBlurAmount}
-                    />
-                )}
+                {renderNMinus1Cell()}
             </td>
-            <td className="px-4 py-2 text-sm text-right font-medium text-gray-900 bg-gray-50 print:bg-transparent border-r border-gray-50" title="Calculé automatiquement depuis la saisie réalisée">
+            <td className="px-4 py-2 text-sm text-right font-medium text-gray-900 bg-gray-50 print:bg-transparent border-r border-gray-50" title="Calculé automatiquement depuis la saisie réalisée de l'année sélectionnée">
                 {formatCurrency(realizedN)}
             </td>
             <td className={`px-4 py-2 text-sm text-right font-medium ${gapColor}`}>
@@ -110,29 +125,54 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
     onUpdate(updated);
   };
 
-  const calculateRealizedN = (lineId: string) => {
+  // Calcul générique pour une année donnée
+  const calculateRealizedForYear = (lineId: string, targetYear: number) => {
     return transactions
-      .filter(t => t.budgetLineId === lineId && t.status === 'REALIZED')
+      .filter(t => {
+          const tYear = parseInt(t.date.split('-')[0]);
+          return t.budgetLineId === lineId && t.status === 'REALIZED' && tYear === targetYear;
+      })
       .reduce((acc, t) => acc + t.amount, 0);
   };
 
+  // Récupère la valeur N-1 depuis l'archive (fallback 2)
   const getArchivedNMinus1 = (line: BudgetLine) => {
       if (!previousYearArchive) return null;
       const archivedLine = previousYearArchive.data.budget.find(
           l => l.category === line.category && l.label === line.label && l.section === line.section
       );
       if (!archivedLine) return null;
+      
       const realizedInArchive = previousYearArchive.data.realized
           .filter(t => t.budgetLineId === archivedLine.id && (t.status === 'REALIZED' || !t.status))
           .reduce((acc, t) => acc + t.amount, 0);
       return realizedInArchive;
   };
 
+  // Logique principale pour déterminer la valeur et la source de N-1
+  const getNMinus1Data = (line: BudgetLine): { value: number, source: 'LIVE' | 'ARCHIVE' | 'MANUAL' } => {
+      // 1. Essayer de calculer depuis les transactions réelles de l'année précédente
+      const liveValue = calculateRealizedForYear(line.id, year - 1);
+      if (liveValue !== 0) {
+          return { value: liveValue, source: 'LIVE' };
+      }
+
+      // 2. Essayer de récupérer depuis l'archive
+      const archivedValue = getArchivedNMinus1(line);
+      if (archivedValue !== null) {
+          return { value: archivedValue, source: 'ARCHIVE' };
+      }
+
+      // 3. Fallback sur la saisie manuelle
+      return { value: line.amountNMinus1, source: 'MANUAL' };
+  };
+
   const handleExportBudgetCSV = () => {
-    const header = ['Section', 'Categorie', 'Libelle', 'RealiseN'];
+    const header = ['Section', 'Categorie', 'Libelle', 'RealiseN', 'RealiseN-1'];
     const rows = budgetLines.map(line => {
-      const realized = calculateRealizedN(line.id);
-      return `"${line.section}";"${line.category}";"${line.label}";"${realized}"`;
+      const realizedN = calculateRealizedForYear(line.id, year);
+      const dataNMinus1 = getNMinus1Data(line);
+      return `"${line.section}";"${line.category}";"${line.label}";"${realizedN}";"${dataNMinus1.value}"`;
     });
     
     const csvContent = [header.join(';'), ...rows].join('\n');
@@ -140,6 +180,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
   };
 
   const handleImportNMinus1CSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Import inchangé pour le manuel
       const file = e.target.files?.[0];
       if (!file) return;
 
@@ -178,7 +219,7 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
               onUpdate(updatedBudgetLines);
               alert(`${matchCount} lignes mises à jour avec les données N-1 importées.`);
           } else {
-              alert("Aucune correspondance trouvée entre le fichier CSV et le budget actuel. Vérifiez que les catégories et libellés sont identiques.");
+              alert("Aucune correspondance trouvée.");
           }
       };
       reader.readAsText(file);
@@ -243,22 +284,22 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
     const sectionLines = budgetLines.filter(l => l.section === sectionKey);
     const categories: string[] = Array.from(new Set(sectionLines.map(l => l.category)));
     
-    const totalNMinus1 = sectionLines.reduce((acc, l) => acc + (getArchivedNMinus1(l) ?? l.amountNMinus1), 0);
-    const totalN = sectionLines.reduce((acc, l) => acc + calculateRealizedN(l.id), 0);
+    const totalNMinus1 = sectionLines.reduce((acc, l) => acc + getNMinus1Data(l).value, 0);
+    const totalN = sectionLines.reduce((acc, l) => acc + calculateRealizedForYear(l.id, year), 0);
 
     return (
       <div className="mb-8 break-inside-avoid">
         <div className={`flex justify-between items-center p-3 rounded-t-lg mb-0 ${colorClass} text-white print:text-white`}>
            <h3 className="text-xl font-bold uppercase tracking-wide">{sectionTitle}</h3>
            <div className="text-sm font-medium opacity-90">
-             Total N: {formatCurrency(totalN)}
+             Total {year}: {formatCurrency(totalN)}
            </div>
         </div>
         
         {categories.map(cat => {
             const catLines = sectionLines.filter(l => l.category === cat);
-            const subTotalNMinus1 = catLines.reduce((acc, l) => acc + (getArchivedNMinus1(l) ?? l.amountNMinus1), 0);
-            const subTotalN = catLines.reduce((acc, l) => acc + calculateRealizedN(l.id), 0);
+            const subTotalNMinus1 = catLines.reduce((acc, l) => acc + getNMinus1Data(l).value, 0);
+            const subTotalN = catLines.reduce((acc, l) => acc + calculateRealizedForYear(l.id, year), 0);
 
             const isRenaming = editingCategory?.old === cat;
 
@@ -300,23 +341,25 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
                             <tr>
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/2">Libellé</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
-                                    Réalisé N-1
+                                    Réalisé {year-1}
                                 </th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Réalisé N</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Réalisé {year}</th>
                                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">Écart</th>
                                 <th className="px-4 py-2 w-10 no-print"></th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-100">
                             {catLines.map(line => {
-                                const realizedN = calculateRealizedN(line.id);
-                                const archivedNMinus1 = getArchivedNMinus1(line);
+                                const realizedN = calculateRealizedForYear(line.id, year);
+                                const nMinus1Data = getNMinus1Data(line);
+                                
                                 return (
                                     <BudgetRow 
                                         key={line.id}
                                         line={line}
                                         realizedN={realizedN}
-                                        archivedNMinus1={archivedNMinus1}
+                                        valueNMinus1={nMinus1Data.value}
+                                        sourceNMinus1={nMinus1Data.source}
                                         onDelete={deleteLine}
                                         onUpdateLine={handleValueChange}
                                     />
@@ -346,41 +389,39 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
     );
   };
 
-  const calculateGlobalRealizedN = (lines: BudgetLine[]) => {
-      return lines.reduce((acc, l) => acc + calculateRealizedN(l.id), 0);
+  const calculateGlobalRealizedForYear = (lines: BudgetLine[], targetYear: number) => {
+      return lines.reduce((acc, l) => acc + calculateRealizedForYear(l.id, targetYear), 0);
   };
   
   const calculateGlobalNMinus1 = (lines: BudgetLine[]) => {
-      return lines.reduce((acc, l) => acc + (getArchivedNMinus1(l) ?? l.amountNMinus1), 0);
+      return lines.reduce((acc, l) => acc + getNMinus1Data(l).value, 0);
   }
 
   const recLines = budgetLines.filter(l => l.section === 'RECETTE');
   const depLines = budgetLines.filter(l => l.section === 'DEPENSE');
 
   const globalNMinus1 = calculateGlobalNMinus1(recLines) - calculateGlobalNMinus1(depLines);
-  const globalN = calculateGlobalRealizedN(recLines) - calculateGlobalRealizedN(depLines);
+  const globalN = calculateGlobalRealizedForYear(recLines, year) - calculateGlobalRealizedForYear(depLines, year);
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow no-print">
+      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-lg shadow no-print gap-4">
         <div>
-           <div className="flex items-center gap-2">
+           <div className="flex items-center gap-3">
              <h2 className="text-2xl font-bold text-gray-800">Bilan Financier</h2>
-             <input 
-                type="number" 
-                value={year}
-                onChange={(e) => onYearChange(parseInt(e.target.value) || new Date().getFullYear())}
-                className="text-2xl font-bold text-gray-800 w-24 border-b border-gray-300 focus:outline-none focus:border-blue-500 bg-transparent text-center"
-             />
+             <span className="px-2 py-1 bg-gray-100 rounded text-sm font-bold text-gray-600">Exercice {year}</span>
            </div>
-           <p className="text-sm text-gray-500">Comparatif N (Calculé depuis Saisie) vs N-1 {previousYearArchive ? "(Calculé depuis Archives)" : "(Saisi manuellement ou Importé)"}</p>
+           <p className="text-sm text-gray-500 mt-1">
+             Affiche uniquement les opérations datées de <strong>{year}</strong>.
+           </p>
         </div>
-        <div className="flex gap-2">
+        
+        <div className="flex gap-2 flex-wrap justify-end">
             <Button onClick={handleExportBudgetCSV} variant="ghost" size="sm" title="Exporter le réalisé de l'année en cours (N) au format CSV pour l'utiliser l'année prochaine">
-                <Download className="w-4 h-4 mr-2" /> Exporter Réalisé N (CSV)
+                <Download className="w-4 h-4 mr-2" /> Exporter {year}
             </Button>
             <label className="flex items-center px-3 py-2 bg-white border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
-                <Upload className="w-4 h-4 mr-2" /> Importer en N-1 (CSV)
+                <Upload className="w-4 h-4 mr-2" /> Import N-1
                 <input type="file" className="hidden" accept=".csv, .txt" onChange={handleImportNMinus1CSV} />
             </label>
             <Button onClick={() => window.print()} variant="secondary" size="sm">
@@ -404,16 +445,16 @@ export const BudgetTab: React.FC<BudgetTabProps> = ({ budgetLines, transactions,
             {renderSection('DÉPENSES (CHARGES)', 'DEPENSE', 'bg-gray-700')}
             
             <div className="bg-white border-2 border-gray-800 p-6 rounded-lg mb-8 break-inside-avoid shadow-lg print:shadow-none print:border-black">
-                <h3 className="text-center text-xl font-bold text-gray-900 uppercase mb-4">Résultat Financier</h3>
+                <h3 className="text-center text-xl font-bold text-gray-900 uppercase mb-4">Résultat Financier {year}</h3>
                 <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
-                        <div className="text-sm text-gray-500 uppercase tracking-wider">Résultat N-1</div>
+                        <div className="text-sm text-gray-500 uppercase tracking-wider">Résultat {year-1}</div>
                         <div className={`text-2xl font-bold ${globalNMinus1 >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {formatCurrency(globalNMinus1)}
                         </div>
                     </div>
                     <div>
-                        <div className="text-sm text-gray-500 uppercase tracking-wider">Résultat N</div>
+                        <div className="text-sm text-gray-500 uppercase tracking-wider">Résultat {year}</div>
                         <div className={`text-2xl font-bold ${globalN >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {formatCurrency(globalN)}
                         </div>

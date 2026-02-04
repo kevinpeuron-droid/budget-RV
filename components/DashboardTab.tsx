@@ -5,24 +5,43 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 
 interface DashboardTabProps {
   data: AppData;
+  year: number;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#FF6B6B', '#4ECDC4'];
 
-export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
+export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
   
   const stats = useMemo(() => {
+    // Filtrage des transactions pour l'année sélectionnée
+    const filteredTransactions = data.realized.filter(t => {
+        const tYear = parseInt(t.date.split('-')[0]);
+        return tYear === year;
+    });
+
     // 1. Calcul des recettes MANUELLES (Saisie Opérations)
-    const recettesRealized = data.realized
+    const recettesRealized = filteredTransactions
       .filter(t => t.type === 'RECETTE' && (t.status === undefined || t.status === 'REALIZED'))
       .reduce((acc, curr) => acc + curr.amount, 0);
       
-    const recettesPending = data.realized
+    const recettesPending = filteredTransactions
       .filter(t => t.type === 'RECETTE' && t.status === 'PENDING')
       .reduce((acc, curr) => acc + curr.amount, 0);
     
     // 2. Sponsors
-    const recettesSponsorsRealized = data.sponsors.reduce((acc, curr) => acc + (curr.amountPaid || 0), 0);
+    // On pourrait filtrer les sponsors par date de paiement si disponible, mais pour l'instant on prend tout
+    // ou on considère que les sponsors affichés sont ceux de l'événement courant.
+    // Idéalement, il faudrait filtrer sponsors par year si 'datePaid' match.
+    const recettesSponsorsRealized = data.sponsors.reduce((acc, curr) => {
+        if(curr.datePaid && curr.datePaid.startsWith(year.toString())) {
+             return acc + (curr.amountPaid || 0);
+        }
+        // Si pas de date de paiement, on ne compte pas dans le "Réalisé de l'année" ?
+        // Pour rester simple, si pas de date, on l'inclut, sinon on filtre.
+        if (!curr.datePaid) return acc + (curr.amountPaid || 0);
+        return acc;
+    }, 0);
+
     const recettesSponsorsPending = data.sponsors.reduce((acc, curr) => acc + Math.max(0, (curr.amountPromised || 0) - (curr.amountPaid || 0)), 0);
 
     // TOTAUX RECETTES
@@ -31,11 +50,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
     const totalRecettesGlobal = totalRecettesRealized + totalRecettesPending;
 
     // 3. Dépenses
-    const depensesRealized = data.realized
+    const depensesRealized = filteredTransactions
       .filter(t => t.type === 'DEPENSE' && (t.status === undefined || t.status === 'REALIZED'))
       .reduce((acc, curr) => acc + curr.amount, 0);
 
-    const depensesPending = data.realized
+    const depensesPending = filteredTransactions
       .filter(t => t.type === 'DEPENSE' && t.status === 'PENDING')
       .reduce((acc, curr) => acc + curr.amount, 0);
 
@@ -49,7 +68,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
     const soldeProjete = totalRecettesGlobal - totalDepensesGlobal;
     
     // Préparation Pie Chart
-    const recettesByCategory = data.realized.filter(t => t.type === 'RECETTE').reduce((acc, curr) => {
+    const recettesByCategory = filteredTransactions.filter(t => t.type === 'RECETTE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
@@ -59,7 +78,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       recettesByCategory[labelSponsor] = (recettesByCategory[labelSponsor] || 0) + (recettesSponsorsRealized + recettesSponsorsPending);
     }
 
-    const depensesByCategory = data.realized.filter(t => t.type === 'DEPENSE').reduce((acc, curr) => {
+    const depensesByCategory = filteredTransactions.filter(t => t.type === 'DEPENSE').reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
@@ -71,7 +90,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
         recettesByCategory, depensesByCategory, 
         recettesSponsorsRealized 
     };
-  }, [data.realized, data.sponsors]);
+  }, [data.realized, data.sponsors, year]);
 
   const pieDataRecettes = Object.keys(stats.recettesByCategory).map(key => ({ name: key, value: stats.recettesByCategory[key] }));
   const pieDataDepenses = Object.keys(stats.depensesByCategory).map(key => ({ name: key, value: stats.depensesByCategory[key] }));
@@ -87,7 +106,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Recettes */}
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
-          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Recettes Totales</h3>
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Recettes {year}</h3>
           <p className="text-2xl font-bold text-green-700">{formatCurrency(stats.totalRecettesGlobal)}</p>
           <div className="mt-2 text-xs space-y-1">
              <div className="flex justify-between">
@@ -103,7 +122,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
 
         {/* Dépenses */}
         <div className="bg-white p-4 rounded-lg shadow border-l-4 border-red-500">
-          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Dépenses Totales</h3>
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Dépenses {year}</h3>
           <p className="text-2xl font-bold text-red-700">{formatCurrency(stats.totalDepensesGlobal)}</p>
           <div className="mt-2 text-xs space-y-1">
              <div className="flex justify-between">
@@ -119,7 +138,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
 
         {/* Solde Réel */}
         <div className={`bg-white p-4 rounded-lg shadow border-l-4 ${stats.soldeReel >= 0 ? 'border-blue-500' : 'border-orange-500'}`}>
-          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Trésorerie Actuelle</h3>
+          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Trésorerie {year}</h3>
           <p className={`text-2xl font-bold ${stats.soldeReel >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
             {formatCurrency(stats.soldeReel)}
           </p>
@@ -176,7 +195,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       </div>
 
        <div className="bg-white p-4 rounded-lg shadow">
-         <h4 className="text-lg font-semibold mb-4 text-center">Balance : Réel vs À Venir</h4>
+         <h4 className="text-lg font-semibold mb-4 text-center">Balance {year} : Réel vs À Venir</h4>
          {/* AJOUT DE LA CLASSE DE HAUTEUR FIXE POUR RECHARTS */}
          <div className="h-[400px] w-full">
            <ResponsiveContainer width="100%" height="100%">
