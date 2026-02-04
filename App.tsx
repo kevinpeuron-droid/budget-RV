@@ -50,6 +50,28 @@ const toArray = <T,>(obj: any): T[] => {
   return Object.values(obj);
 };
 
+// Fonction récursive pour nettoyer les données (undefined -> null) pour Firebase
+const sanitizeData = (data: any): any => {
+  if (data === undefined) return null;
+  if (data === null) return null;
+  
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeData(item));
+  }
+  
+  if (typeof data === 'object') {
+    const newObj: any = {};
+    Object.keys(data).forEach(key => {
+      const value = data[key];
+      // On s'assure que si c'est undefined, ça devient null, sinon Firebase rejette tout l'objet parent parfois
+      newObj[key] = sanitizeData(value);
+    });
+    return newObj;
+  }
+  
+  return data;
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [data, setData] = useState<AppState>(INITIAL_STATE);
@@ -63,7 +85,7 @@ function App() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
         if (loading) setConnectionError(true);
-    }, 8000); // Augmenté à 8s pour laisser le temps
+    }, 8000);
 
     const eventsRef = ref(db, 'events_meta');
     const unsubscribe = onValue(eventsRef, (snapshot) => {
@@ -75,7 +97,7 @@ function App() {
       const keys = Object.keys(val);
       
       if (keys.length === 0) {
-          // AUCUN ÉVÉNEMENT : On en crée un par défaut pour que l'app soit utilisable tout de suite
+          // AUCUN ÉVÉNEMENT : On en crée un par défaut
           const defaultName = `Édition ${new Date().getFullYear()}`;
           const newRef = push(ref(db, 'events_meta'));
           const newId = newRef.key as string;
@@ -91,7 +113,7 @@ function App() {
 
           setCurrentEventId(newId);
       } else if (!currentEventId) {
-          // Sélectionner le dernier événement par défaut si aucun n'est sélectionné
+          // Sélectionner le dernier événement par défaut
           const lastKey = keys[keys.length - 1];
           setCurrentEventId(lastKey);
       }
@@ -106,7 +128,7 @@ function App() {
         clearTimeout(timeoutId);
         unsubscribe();
     };
-  }, []); // Pas de dépendance currentEventId ici pour éviter boucle infinie
+  }, []); 
 
   // 2. Charger les données de l'événement actif
   useEffect(() => {
@@ -136,35 +158,39 @@ function App() {
           categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
         }));
       } else {
-        // Cas rare : Meta existe mais pas Data (suppression manuelle ?)
         setData({ ...INITIAL_STATE });
       }
       setLoading(false);
     });
   }, [currentEventId]);
 
-  // --- FONCTION DE SAUVEGARDE CENTRALISÉE ---
+  // --- FONCTION DE SAUVEGARDE CENTRALISÉE ET SÉCURISÉE ---
   const syncToFirebase = (key: keyof AppState, value: any) => {
     if (!currentEventId) {
         alert("Aucun événement sélectionné. Impossible de sauvegarder.");
         return;
     }
     
-    // Optimistic UI update (mise à jour locale immédiate pour fluidité)
+    // Optimistic UI update
     setData(prev => ({ ...prev, [key]: value }));
     setSaveStatus('saving');
 
+    // NETTOYAGE CRITIQUE : Suppression des undefined
+    // On utilise JSON.stringify/parse comme méthode radicale pour nettoyer les undefined
+    // ou transformer en null si on utilisait une fonction custom.
+    // Ici, sanitizeData s'assure que tout undefined devient null explicitement.
+    const cleanValue = sanitizeData(value);
+
     // Envoi Firebase
-    set(ref(db, `events_data/${currentEventId}/${key}`), value)
+    set(ref(db, `events_data/${currentEventId}/${key}`), cleanValue)
       .then(() => {
           setSaveStatus('saved');
-          // Remettre à 'idle' après 2 secondes
           setTimeout(() => setSaveStatus('idle'), 2000);
       })
       .catch((err) => {
           console.error("Erreur sauvegarde Firebase:", err);
           setSaveStatus('error');
-          alert("Erreur de sauvegarde ! Vérifiez votre connexion.");
+          // alert("Erreur de sauvegarde ! Vérifiez votre connexion."); // Désactivé pour éviter le spam
       });
   };
 
@@ -187,7 +213,6 @@ function App() {
 
   // --- GESTION DES ÉDITIONS ---
 
-  // Création événement
   const handleCreateEvent = () => {
     const name = prompt("Nom de la nouvelle édition (ex: Rand'eau Vive 2026) :");
     if (name) {
@@ -208,7 +233,6 @@ function App() {
     }
   };
 
-  // Renommer l'événement courant
   const handleRenameEvent = () => {
     if (!currentEventId) return;
     const currentName = eventsList[currentEventId]?.name;
@@ -218,33 +242,27 @@ function App() {
     }
   };
 
-  // Supprimer l'événement courant
   const handleDeleteEvent = () => {
     if (!currentEventId) return;
-    if (confirm("ATTENTION : Vous allez supprimer DÉFINITIVEMENT cette édition et toutes ses données (budget, sponsors, opérations...). Cette action est irréversible.\n\nÊtes-vous sûr ?")) {
+    if (confirm("ATTENTION : Suppression DÉFINITIVE de cette édition et toutes ses données. Irréversible. Êtes-vous sûr ?")) {
       const idToDelete = currentEventId;
-      // On désélectionne d'abord pour éviter des écritures fantômes
       setCurrentEventId(null); 
-      
       remove(ref(db, `events_meta/${idToDelete}`));
       remove(ref(db, `events_data/${idToDelete}`));
-      
-      // La sélection automatique du prochain événement sera gérée par le useEffect
     }
   };
 
-  // Importer un Backup JSON
   const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!currentEventId) {
-        alert("Veuillez d'abord créer ou sélectionner une édition pour y importer les données.");
+        alert("Veuillez d'abord sélectionner une édition.");
         e.target.value = '';
         return;
     }
 
-    if (!confirm("ATTENTION : L'importation va ÉCRASER toutes les données de l'édition actuelle avec celles du fichier.\n\nContinuer ?")) {
+    if (!confirm("ATTENTION : L'importation va ÉCRASER toutes les données actuelles.\n\nContinuer ?")) {
         e.target.value = '';
         return;
     }
@@ -253,15 +271,13 @@ function App() {
     reader.onload = (event) => {
         try {
             const json = JSON.parse(event.target?.result as string) as any;
-            
-            // Validation sommaire
-            if (!json.budget && !json.realized) {
-               throw new Error("Format JSON invalide ou inconnu.");
-            }
+            if (!json.budget && !json.realized) throw new Error("Format JSON invalide.");
 
-            // Restauration dans Firebase
             setSaveStatus('saving');
-            set(ref(db, `events_data/${currentEventId}`), json)
+            // On nettoie aussi le JSON importé
+            const cleanJson = sanitizeData(json);
+
+            set(ref(db, `events_data/${currentEventId}`), cleanJson)
                 .then(() => {
                     setSaveStatus('saved');
                     alert("✅ Backup restauré avec succès !");
@@ -276,16 +292,14 @@ function App() {
         }
     };
     reader.readAsText(file);
-    e.target.value = ''; // Reset pour permettre de réimporter le même fichier
+    e.target.value = '';
   };
 
   // Logique Banque <-> Transaction
   const handleLinkTransaction = (bankId: string, transactionId: string) => {
     if (!currentEventId) return;
-    
     const bankLine = data.bankLines.find(l => l.id === bankId);
     
-    // Mise à jour locale + sauvegarde
     const updatedBankLines = data.bankLines.map(line => 
       line.id === bankId ? { ...line, transactionId } : line
     );
@@ -331,7 +345,10 @@ function App() {
           status: 'REALIZED',
           category: category,
           budgetLineId: budgetLineId,
-          isBenevolat: false
+          eventId: null as any, // Null explicite pour Firebase
+          isBenevolat: false,
+          hours: null as any, // Null explicite
+          hourlyRate: null as any // Null explicite
       };
 
       const updatedTransactions = [...data.realized, newTransaction];
@@ -341,13 +358,11 @@ function App() {
       updateBankLines(updatedBankLines);
   };
 
-  // Exports
   const handleExportCSV = () => {
     const headers = ['date', 'type', 'status', 'category', 'description', 'amount'];
     const csvContent = convertToCSV(data.realized, headers);
     const currentEvent = currentEventId ? eventsList[currentEventId] : undefined;
-    const currentName = currentEvent?.name;
-    downloadCSV(csvContent, `transactions_${currentName || 'export'}.csv`);
+    downloadCSV(csvContent, `transactions_${currentEvent?.name || 'export'}.csv`);
   };
 
   const handleExportJSON = () => {
@@ -357,8 +372,7 @@ function App() {
     const link = document.createElement('a');
     link.href = url;
     const currentEvent = currentEventId ? eventsList[currentEventId] : undefined;
-    const currentName = currentEvent?.name;
-    link.download = `backup_${currentName || 'data'}.json`;
+    link.download = `backup_${currentEvent?.name || 'data'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -397,11 +411,9 @@ function App() {
         
         <div className="p-4 mt-auto border-t border-gray-700 space-y-3">
           <div className="text-xs text-center text-gray-500 mb-1">Sauvegarde & Restauration</div>
-          
           <button onClick={handleExportJSON} className="flex items-center justify-center w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm transition">
             <Download className="w-4 h-4 mr-2" /> Backup Local
           </button>
-
           <label className="flex items-center justify-center w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition cursor-pointer text-gray-200">
              <Upload className="w-4 h-4 mr-2" /> Restaurer Backup
              <input type="file" className="hidden" accept=".json" onChange={handleImportJSON} />
@@ -426,7 +438,6 @@ function App() {
                 </select>
              </div>
              
-             {/* Boutons d'édition de l'événement courant */}
              {currentEventId && (
                 <div className="flex gap-1">
                     <Button size="sm" variant="ghost" onClick={handleRenameEvent} title="Renommer l'édition" className="text-gray-500 hover:text-blue-600">
@@ -444,7 +455,6 @@ function App() {
           </div>
 
           <div className="flex items-center space-x-4">
-            {/* Status Indicator */}
             <div className="hidden md:flex items-center text-sm">
                 {saveStatus === 'saving' && (
                     <span className="text-blue-600 flex items-center"><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Enregistrement...</span>

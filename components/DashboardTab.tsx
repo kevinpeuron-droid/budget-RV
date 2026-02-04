@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { AppData, Transaction } from '../types';
 import { formatCurrency } from '../utils';
@@ -141,7 +140,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-4 rounded-lg shadow">
           <h4 className="text-lg font-semibold mb-4 text-center">Répartition Recettes (Engagé inclus)</h4>
-          <div className="h-[350px] w-full">
+          {/* AJOUT DE LA CLASSE DE HAUTEUR FIXE POUR RECHARTS */}
+          <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pieDataRecettes} cx="50%" cy="50%" innerRadius={40} outerRadius={80} fill="#8884d8" paddingAngle={5} dataKey="value">
@@ -158,7 +158,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
 
         <div className="bg-white p-4 rounded-lg shadow">
           <h4 className="text-lg font-semibold mb-4 text-center">Répartition Dépenses (Engagé inclus)</h4>
-          <div className="h-[350px] w-full">
+           {/* AJOUT DE LA CLASSE DE HAUTEUR FIXE POUR RECHARTS */}
+          <div className="h-[400px] w-full">
              <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pieDataDepenses} cx="50%" cy="50%" innerRadius={40} outerRadius={80} fill="#82ca9d" paddingAngle={5} dataKey="value">
@@ -176,7 +177,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data }) => {
 
        <div className="bg-white p-4 rounded-lg shadow">
          <h4 className="text-lg font-semibold mb-4 text-center">Balance : Réel vs À Venir</h4>
-         <div className="h-[350px] w-full">
+         {/* AJOUT DE LA CLASSE DE HAUTEUR FIXE POUR RECHARTS */}
+         <div className="h-[400px] w-full">
            <ResponsiveContainer width="100%" height="100%">
              <BarChart data={barData}>
                <XAxis dataKey="name" />
