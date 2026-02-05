@@ -118,6 +118,7 @@ export interface AppData {
   volunteers: Volunteer[]; // Nouveau champ
   budget: BudgetLine[];
   budgetYear: number;
+  initialBalance?: number; // Nouveau : Solde au 1er janvier
   categoriesRecette: string[];
   categoriesDepense: string[];
   bankLines: BankLine[];

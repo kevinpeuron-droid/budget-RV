@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import { BankLine, Transaction, BudgetLine } from '../types';
 import { generateId, formatCurrency } from '../utils';
 import { Button } from './ui/Button';
-import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload, Calendar, Eraser } from 'lucide-react';
+import { Trash2, Plus, Link as LinkIcon, Unlink, Check, AlertCircle, ArrowRight, Download, Upload, Calendar, Eraser, Wallet } from 'lucide-react';
 
 interface BankTabProps {
   bankLines: BankLine[];
   transactions: Transaction[];
   budget: BudgetLine[];
   lastPointedDate?: string; 
+  initialBalance: number;
   onUpdateBankLines: (lines: BankLine[]) => void;
   onUpdateLastPointedDate: (date: string) => void;
+  onUpdateInitialBalance: (amount: number) => void;
   onLinkTransaction: (bankId: string, transactionId: string) => void;
   onUnlinkTransaction: (bankId: string) => void;
   onCreateFromBank: (bankId: string, category: string, budgetLineId: string, description: string) => void;
@@ -22,8 +24,10 @@ export const BankTab: React.FC<BankTabProps> = ({
   transactions, 
   budget,
   lastPointedDate,
+  initialBalance,
   onUpdateBankLines,
   onUpdateLastPointedDate,
+  onUpdateInitialBalance,
   onLinkTransaction,
   onUnlinkTransaction,
   onCreateFromBank,
@@ -40,6 +44,9 @@ export const BankTab: React.FC<BankTabProps> = ({
 
   // Filtrer les lignes bancaires affichées
   const displayedBankLines = bankLines.filter(l => l.date.startsWith(year.toString()));
+  
+  const totalMouvements = displayedBankLines.reduce((acc, l) => acc + l.amount, 0);
+  const soldeFinal = initialBalance + totalMouvements;
 
   // Add Manual Line
   const handleAddManual = () => {
@@ -208,15 +215,36 @@ export const BankTab: React.FC<BankTabProps> = ({
     <div className="space-y-6">
       
       {/* Top Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Solde Initial */}
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
+             <h3 className="font-bold text-gray-700 mb-2 flex items-center">
+                 <Wallet className="w-4 h-4 mr-2" /> Solde au 01/01/{year}
+             </h3>
+             <div className="flex items-center gap-2">
+                 <input 
+                    type="number" 
+                    step="0.01" 
+                    className="border p-2 rounded text-lg font-bold w-full"
+                    value={initialBalance}
+                    onChange={(e) => onUpdateInitialBalance(parseFloat(e.target.value))}
+                 />
+                 <span className="text-gray-500">€</span>
+             </div>
+             <p className="text-xs text-gray-400 mt-1">Report à nouveau (compte bancaire)</p>
+        </div>
+
         {/* Manual Add */}
         <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="font-bold text-gray-700 mb-3">Ajout Manuel</h3>
             <div className="flex flex-col gap-2">
                 <input type="date" className="border p-2 rounded text-sm" value={newLine.date} onChange={e => setNewLine({...newLine, date: e.target.value})} />
                 <input type="text" placeholder="Libellé" className="border p-2 rounded text-sm" value={newLine.description} onChange={e => setNewLine({...newLine, description: e.target.value})} />
-                <input type="number" step="0.01" placeholder="Montant (+/-)" className="border p-2 rounded text-sm" value={newLine.amount || ''} onChange={e => setNewLine({...newLine, amount: parseFloat(e.target.value)})} />
-                <Button onClick={handleAddManual} size="sm">Ajouter ligne</Button>
+                <div className="flex gap-1">
+                    <input type="number" step="0.01" placeholder="Montant" className="border p-2 rounded text-sm w-full" value={newLine.amount || ''} onChange={e => setNewLine({...newLine, amount: parseFloat(e.target.value)})} />
+                    <Button onClick={handleAddManual} size="sm"><Plus className="w-4 h-4" /></Button>
+                </div>
             </div>
         </div>
 
@@ -229,7 +257,7 @@ export const BankTab: React.FC<BankTabProps> = ({
             {/* Last Pointed Date Configuration */}
             <div className="mb-4 bg-blue-50 p-3 rounded border border-blue-100">
                 <label className="block text-xs font-semibold text-blue-800 mb-1 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Date du dernier pointage (exclure opérations avant/le)
+                    <Calendar className="w-3 h-3" /> Exclure avant le :
                 </label>
                 <input 
                     type="date" 
@@ -237,21 +265,19 @@ export const BankTab: React.FC<BankTabProps> = ({
                     value={lastPointedDate || ''}
                     onChange={(e) => onUpdateLastPointedDate(e.target.value)}
                 />
-                <p className="text-xs text-blue-600 mt-1">Les opérations antérieures à cette date seront ignorées lors de l'import.</p>
             </div>
 
             {!showImport ? (
                 <div className="flex flex-col gap-2">
-                    <p className="text-sm text-gray-500">Format: Col A: Date | Col B: Libellé | Col C: Débit | Col D: Crédit</p>
                     <Button variant="secondary" onClick={() => setShowImport(true)}>
-                        <Download className="w-4 h-4 mr-2" /> Ouvrir l'outil d'import
+                        <Download className="w-4 h-4 mr-2" /> Ouvrir l'import
                     </Button>
                 </div>
             ) : (
                 <div className="flex flex-col gap-4">
                      <div className="border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer hover:bg-gray-50 relative">
-                        <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                        <span className="text-sm text-gray-600 block">Cliquez pour importer un fichier CSV</span>
+                        <Upload className="w-6 h-6 mx-auto text-gray-400 mb-1" />
+                        <span className="text-xs text-gray-600 block">CSV File</span>
                         <input 
                             type="file" 
                             accept=".csv, .txt" 
@@ -260,24 +286,15 @@ export const BankTab: React.FC<BankTabProps> = ({
                         />
                      </div>
                      
-                     <div className="relative">
-                        <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                            <div className="w-full border-t border-gray-300"></div>
-                        </div>
-                        <div className="relative flex justify-center">
-                            <span className="px-2 bg-white text-sm text-gray-500">OU copier-coller</span>
-                        </div>
-                     </div>
-
                     <textarea 
-                        className="w-full border p-2 text-xs h-24 font-mono" 
-                        placeholder={`01/01/2025;Virement Asso;0;50\n02/01/2025;Achat Stylo;12.50;0`}
+                        className="w-full border p-2 text-xs h-16 font-mono" 
+                        placeholder={`01/01/2025;Virement;0;50`}
                         value={importText}
                         onChange={e => setImportText(e.target.value)}
                     />
                     <div className="flex gap-2">
-                        <Button onClick={handleImportText} size="sm" className="flex-1">Importer Texte</Button>
-                        <Button onClick={() => setShowImport(false)} variant="ghost" size="sm">Annuler</Button>
+                        <Button onClick={handleImportText} size="sm" className="flex-1">Importer</Button>
+                        <Button onClick={() => setShowImport(false)} variant="ghost" size="sm">Fermer</Button>
                     </div>
                 </div>
             )}
@@ -288,9 +305,13 @@ export const BankTab: React.FC<BankTabProps> = ({
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="p-4 border-b bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
              <div>
-                <h3 className="font-bold text-gray-700">Relevé de Compte {year} ({displayedBankLines.length} lignes)</h3>
-                <div className="text-sm text-gray-500">
-                    Solde pointé sur la période: <span className="font-bold text-gray-800">{formatCurrency(displayedBankLines.reduce((acc, l) => acc + l.amount, 0))}</span>
+                <h3 className="font-bold text-gray-700">Relevé de Compte {year}</h3>
+                <div className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                    <span>Solde Init: <strong>{formatCurrency(initialBalance)}</strong></span>
+                    <ArrowRight className="w-3 h-3 text-gray-400" />
+                    <span>Mvt: <strong>{formatCurrency(totalMouvements)}</strong></span>
+                    <ArrowRight className="w-3 h-3 text-gray-400" />
+                    <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold">Final: {formatCurrency(soldeFinal)}</span>
                 </div>
              </div>
              <div className="flex gap-2">

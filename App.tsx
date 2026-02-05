@@ -33,6 +33,7 @@ const INITIAL_STATE: AppState = {
   volunteers: [],
   budget: DEFAULT_BUDGET_LINES,
   budgetYear: new Date().getFullYear(),
+  initialBalance: 0, // Nouveau champ
   categoriesRecette: DEFAULT_CATEGORIES_RECETTE,
   categoriesDepense: DEFAULT_CATEGORIES_DEPENSE,
   bankLines: [],
@@ -166,6 +167,7 @@ function App() {
           archives: toArray(val.archives),
           categoriesRecette: val.categoriesRecette || DEFAULT_CATEGORIES_RECETTE,
           categoriesDepense: val.categoriesDepense || DEFAULT_CATEGORIES_DEPENSE,
+          initialBalance: val.initialBalance || 0, // Initialisation sécurisée
         }));
       } else {
         setData({ ...INITIAL_STATE });
@@ -217,6 +219,7 @@ function App() {
   const updateBankLines = (lines: BankLine[]) => syncToFirebase('bankLines', lines);
   const updateLastPointedDate = (date: string) => syncToFirebase('lastPointedDate', date);
   const updateEventsList = (events: AppEvent[]) => syncToFirebase('eventsList', events);
+  const updateInitialBalance = (amount: number) => syncToFirebase('initialBalance', amount);
 
   const updateCategories = (type: 'RECETTE' | 'DEPENSE', cats: string[]) => {
     if (type === 'RECETTE') syncToFirebase('categoriesRecette', cats);
@@ -528,7 +531,9 @@ function App() {
 
                 {/* On passe selectedYear à tous les composants */}
 
-                {activeTab === 'dashboard' && <DashboardTab data={data} year={selectedYear} />}
+                {activeTab === 'dashboard' && (
+                  <DashboardTab data={data} year={selectedYear} initialBalance={data.initialBalance || 0} />
+                )}
                 
                 {activeTab === 'volunteers' && (
                    <VolunteersTab volunteers={data.volunteers} onUpdate={updateVolunteers} />
@@ -562,8 +567,10 @@ function App() {
                     transactions={data.realized}
                     budget={data.budget}
                     lastPointedDate={data.lastPointedDate}
+                    initialBalance={data.initialBalance || 0}
                     onUpdateBankLines={updateBankLines}
                     onUpdateLastPointedDate={updateLastPointedDate}
+                    onUpdateInitialBalance={updateInitialBalance}
                     onLinkTransaction={handleLinkTransaction}
                     onUnlinkTransaction={handleUnlinkTransaction}
                     onCreateFromBank={handleCreateFromBank}

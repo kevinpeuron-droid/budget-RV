@@ -412,6 +412,15 @@ export const SponsorsTab: React.FC<SponsorsTabProps> = ({
                           />
                         </div>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Téléphone</label>
+                        <input
+                          type="tel"
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2"
+                          value={currentSponsor.phone || ''}
+                          onChange={e => setCurrentSponsor({...currentSponsor, phone: e.target.value})}
+                        />
+                      </div>
                     </div>
 
                     {/* Dates & Statut (Annuel) */}

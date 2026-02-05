@@ -6,11 +6,12 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 interface DashboardTabProps {
   data: AppData;
   year: number;
+  initialBalance?: number;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#FF6B6B', '#4ECDC4'];
 
-export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
+export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year, initialBalance = 0 }) => {
   
   const stats = useMemo(() => {
     // Filtrage des transactions pour l'année sélectionnée
@@ -80,8 +81,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
     const totalDepensesGlobal = totalDepensesRealized + totalDepensesPending;
     
     // RÉSULTATS
-    const soldeReel = totalRecettesRealized - totalDepensesRealized;
-    const soldeProjete = totalRecettesGlobal - totalDepensesGlobal;
+    // La Trésorerie réelle inclut le report à nouveau (solde initial)
+    const soldeReel = initialBalance + totalRecettesRealized - totalDepensesRealized;
+    // Le résultat projeté est le résultat de l'exercice (Recette - Depense) + report
+    const soldeProjete = initialBalance + totalRecettesGlobal - totalDepensesGlobal;
     
     // Préparation Pie Chart
     const recettesByCategory = filteredTransactions.filter(t => t.type === 'RECETTE').reduce((acc, curr) => {
@@ -106,7 +109,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
         recettesByCategory, depensesByCategory, 
         recettesSponsorsRealized 
     };
-  }, [data.realized, data.sponsors, year]);
+  }, [data.realized, data.sponsors, year, initialBalance]);
 
   const pieDataRecettes = Object.keys(stats.recettesByCategory).map(key => ({ name: key, value: stats.recettesByCategory[key] }));
   const pieDataDepenses = Object.keys(stats.depensesByCategory).map(key => ({ name: key, value: stats.depensesByCategory[key] }));
@@ -154,11 +157,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
 
         {/* Solde Réel */}
         <div className={`bg-white p-4 rounded-lg shadow border-l-4 ${stats.soldeReel >= 0 ? 'border-blue-500' : 'border-orange-500'}`}>
-          <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Trésorerie {year}</h3>
+          <div className="flex justify-between items-start">
+              <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Trésorerie Actuelle</h3>
+              <span className="text-[10px] bg-gray-100 px-1 rounded text-gray-500" title={`Solde initial (report à nouveau): ${formatCurrency(initialBalance)}`}>Incl. Report</span>
+          </div>
           <p className={`text-2xl font-bold ${stats.soldeReel >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
             {formatCurrency(stats.soldeReel)}
           </p>
-          <p className="text-xs text-gray-400 mt-1">Ce qui est réellement en banque</p>
+          <p className="text-xs text-gray-400 mt-1">Dispo banque (avec solde init.)</p>
         </div>
 
         {/* Solde Projetté */}
@@ -167,7 +173,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ data, year }) => {
           <p className={`text-2xl font-bold text-indigo-700`}>
             {formatCurrency(stats.soldeProjete)}
           </p>
-          <p className="text-xs text-gray-400 mt-1">Une fois tout encaissé et payé</p>
+          <p className="text-xs text-gray-400 mt-1">Fin d'exercice (avec report)</p>
         </div>
       </div>
 
